@@ -9,6 +9,7 @@
  */
 
 import type * as destinations from "../destinations.js";
+import type * as seed from "../seed.js";
 import type * as test from "../test.js";
 
 import type {
@@ -19,6 +20,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   destinations: typeof destinations;
+  seed: typeof seed;
   test: typeof test;
 }>;
 
