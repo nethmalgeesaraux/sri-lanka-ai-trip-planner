@@ -5,19 +5,36 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 export default function Home() {
-  const message = useQuery(api.test.hello);
+  const destinations = useQuery(api.destinations.getAll);
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
-      <div className="text-center p-8">
-        <h1 className="text-3xl font-bold mb-4">
-          🇱🇰 LankaTrails
-        </h1>
+    <main className="min-h-screen bg-slate-950 text-white p-10">
+      <h1 className="text-3xl font-bold mb-4">
+        🇱🇰 LankaTrails Destinations
+      </h1>
 
-        <p className="text-lg text-slate-300">
-          {message ?? "Connecting to Convex..."}
-        </p>
-      </div>
+      {destinations === undefined ? (
+        <p>Loading destinations...</p>
+      ) : destinations.length === 0 ? (
+        <p>No destinations available yet.</p>
+      ) : (
+        <div className="grid gap-4">
+          {destinations.map((destination) => (
+            <div
+              key={destination._id}
+              className="rounded-xl bg-slate-800 p-5"
+            >
+              <h2 className="text-xl font-semibold">
+                {destination.name}
+              </h2>
+              <p className="text-slate-300">
+                {destination.district}, {destination.province}
+              </p>
+              <p className="mt-2">{destination.description}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </main>
   );
 }
