@@ -154,6 +154,7 @@ export default function Home() {
                   </p>
                 </div>
 
+
                 <div className="flex flex-wrap gap-2 mt-5">
                   {destination.tags.map((tag) => (
                     <span
@@ -164,6 +165,17 @@ export default function Home() {
                     </span>
                   ))}
                 </div>
+
+                {/* View Details Button */}
+                <button
+                  onClick={() =>
+                    window.location.assign(`/destinations/${destination.slug}`)
+                  }
+                  className="w-full mt-6 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold rounded-xl py-3 transition"
+                >
+                  View Details →
+                </button>
+
               </article>
             ))}
           </div>
