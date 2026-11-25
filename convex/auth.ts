@@ -1,4 +1,3 @@
-
 import {
   createClient,
   type GenericCtx,
@@ -16,16 +15,27 @@ import authConfig from "./auth.config";
 export const authComponent =
   createClient<DataModel>(components.betterAuth);
 
+const siteUrl = process.env.SITE_URL || "http://localhost:3000";
+
 // Create authentication instance
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   return betterAuth({
-    baseURL: process.env.SITE_URL!,
+    baseURL: siteUrl,
+    trustedOrigins: [
+      siteUrl,
+      "http://localhost:3000",
+      "http://localhost:3001",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:3001",
+    ],
 
     database: authComponent.adapter(ctx),
 
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: false,
+      minPasswordLength: 10,
+      maxPasswordLength: 128,
     },
 
     plugins: [
@@ -34,10 +44,10 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
   });
 };
 
-// Get currently logged-in user
+// Get currently logged-in user (returns null when signed out)
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => {
-    return await authComponent.getAuthUser(ctx);
+    return await authComponent.safeGetAuthUser(ctx);
   },
 });

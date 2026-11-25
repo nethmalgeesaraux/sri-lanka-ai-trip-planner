@@ -1,4 +1,3 @@
-
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -49,6 +48,23 @@ export default defineSchema({
       v.literal("confirmed"),
       v.literal("completed")
     ),
+    duration: v.optional(v.number()),
+    budgetTier: v.optional(v.string()),
+    interests: v.optional(v.string()),
+    season: v.optional(v.string()),
+    startingPoint: v.optional(v.string()),
+    source: v.optional(v.union(v.literal("gemini"), v.literal("manual"))),
+    days: v.optional(
+      v.array(
+        v.object({
+          destinationId: v.id("destinations"),
+          title: v.string(),
+          description: v.string(),
+          travelNote: v.string(),
+          estimatedCost: v.number(),
+        })
+      )
+    ),
     createdAt: v.number(),
   }).index("by_profile", ["profileId"]),
 
@@ -92,4 +108,23 @@ export default defineSchema({
   })
     .index("by_destination", ["destinationId"])
     .index("by_profile", ["profileId"]),
+
+  // Contact form submissions
+  contactMessages: defineTable({
+    name: v.string(),
+    email: v.string(),
+    topic: v.union(
+      v.literal("Trip planning"),
+      v.literal("Site feedback"),
+      v.literal("General question")
+    ),
+    message: v.string(),
+    createdAt: v.number(),
+  }),
+
+  // Hourly AI trip generation tracking
+  generationRequests: defineTable({
+    profileId: v.id("profiles"),
+    createdAt: v.number(),
+  }).index("by_profile_and_created_at", ["profileId", "createdAt"]),
 });
