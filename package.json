@@ -11,7 +11,11 @@
   "dependencies": {
     "@arcjet/inspect": "^1.16.0",
     "@arcjet/next": "^1.16.0",
+    "@convex-dev/auth": "^2.1.0",
+    "@convex-dev/better-auth": "^0.13.1",
+    "@convex-dev/resend": "^0.2.10",
     "@google/genai": "^3.6.1",
+    "better-auth": "^1.7.28",
     "convex": "^1.51.0",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.77.0",
