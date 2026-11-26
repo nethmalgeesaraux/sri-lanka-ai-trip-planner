@@ -26,6 +26,18 @@ export default defineSchema({
     bestTimeToVisit: v.string(),
     estimatedDailyBudget: v.number(),
     tags: v.array(v.string()),
+    highlights: v.optional(v.array(v.string())),
+    gettingThere: v.optional(v.string()),
+    restSpots: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          type: v.string(),
+          priceRange: v.string(),
+          note: v.string(),
+        })
+      )
+    ),
     isPublished: v.boolean(),
     createdAt: v.number(),
   })
@@ -62,6 +74,10 @@ export default defineSchema({
           description: v.string(),
           travelNote: v.string(),
           estimatedCost: v.number(),
+          transportMode: v.optional(v.string()),
+          travelDuration: v.optional(v.string()),
+          routeTip: v.optional(v.string()),
+          restRecommendation: v.optional(v.string()),
         })
       )
     ),

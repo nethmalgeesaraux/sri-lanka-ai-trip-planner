@@ -1,15 +1,31 @@
+export type RestSpot = {
+  name: string;
+  type: string;
+  priceRange: string;
+  note: string;
+};
+
 export type Place = {
   id: string;
   slug: string;
   name: string;
   subtitle: string;
+  district: string;
+  province: string;
   tag: string;
   color: string;
   image: string;
+  images: string[];
   detail: string;
   latitude: number;
   longitude: number;
   seasonNote: string;
+  bestTimeToVisit: string;
+  estimatedDailyBudget: number;
+  tags: string[];
+  highlights: string[];
+  gettingThere: string;
+  restSpots: RestSpot[];
   credit: string;
 };
 
@@ -19,6 +35,10 @@ export type TripDay = {
   description: string;
   travelNote: string;
   estimatedCost: number;
+  transportMode?: string;
+  travelDuration?: string;
+  routeTip?: string;
+  restRecommendation?: string;
 };
 
 export type TravelTrip = {

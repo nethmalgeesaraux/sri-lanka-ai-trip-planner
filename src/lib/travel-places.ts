@@ -16,19 +16,31 @@ function badgeColorForTag(tag: string): string {
 
 export function mapDestinationToPlace(dest: Doc<"destinations">): Place {
   const tag = mapCategoryToTag(dest.category);
-  const imageUrl = dest.images?.[0] || "";
+  const images = (dest.images || []).filter(Boolean);
+  const imageUrl = images[0] || "";
   return {
     id: String(dest._id),
     slug: dest.slug,
     name: dest.name,
     subtitle: `${dest.district} · ${dest.province} Province`,
+    district: dest.district,
+    province: dest.province,
     tag,
     color: badgeColorForTag(tag),
     image: imageUrl,
+    images,
     detail: dest.description,
     latitude: dest.location.latitude,
     longitude: dest.location.longitude,
     seasonNote: `Best time: ${dest.bestTimeToVisit} · Est. LKR ${dest.estimatedDailyBudget.toLocaleString()}/day`,
-    credit: "Unsplash · https://unsplash.com",
+    bestTimeToVisit: dest.bestTimeToVisit,
+    estimatedDailyBudget: dest.estimatedDailyBudget,
+    tags: dest.tags || [],
+    highlights: dest.highlights || dest.tags || [],
+    gettingThere:
+      dest.gettingThere ||
+      `Accessible by road or regional rail from major hubs to ${dest.district}.`,
+    restSpots: dest.restSpots || [],
+    credit: "Wikimedia Commons · https://commons.wikimedia.org",
   };
 }

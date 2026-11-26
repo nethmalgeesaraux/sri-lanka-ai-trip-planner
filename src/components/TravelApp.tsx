@@ -15,20 +15,99 @@ import SriLankaMap from "./SriLankaMap";
 const faqs = [
   [
     "How does LankaTrails work?",
-    "Create an email/password account, choose your preferences, and Gemini drafts your itinerary. Generated trips are saved privately to your account so you can revisit and edit them later.",
+    "Create an email/password account, choose your preferences, and Gemini drafts your itinerary with routes, transit tips, and places to rest. Generated trips are saved privately to your account so you can revisit and edit them later.",
   ],
   [
     "When is the best time to visit Sri Lanka?",
-    "Weather varies by region. The south and west are generally drier from December to March, while the east often suits May to September. Always check current forecasts and local conditions.",
+    "Weather varies by region. The south and west are generally drier from December to March, while the east coast and ancient cities shine from May to September. Always check current forecasts before setting off.",
   ],
   [
     "Can I change my itinerary?",
-    "Yes. Rename your trip and edit each day’s title and activities, or generate a new itinerary from different preferences. Allow realistic time between stops.",
+    "Yes. Rename your trip and edit each day’s title and activities, inspect the route map and rest stops, or generate a new itinerary from different preferences.",
   ],
   [
     "Are the budget estimates live prices?",
-    "No. They are illustrative planning estimates, not booking quotes. Prices vary by season, transport, accommodation, and activities. International flights are excluded.",
+    "No. They are illustrative planning estimates in LKR, not booking quotes. Prices vary by season, transport, accommodation, and activities. International flights are excluded.",
   ],
+];
+
+const curatedRoutes = [
+  {
+    title: "Misty Tea & Hill-Country Rail",
+    duration: "3",
+    style: "Adventure",
+    budget: "Comfortable",
+    interests: "Nature & Culture",
+    season: "December – March",
+    startingPoint: "Kandy",
+    stops: ["Kandy", "Nuwara Eliya", "Ella"],
+    restHighlight: "Tea estate bungalows & cliffside lodges in Ella Gap",
+    transportHighlight: "Blue hill-country train from Kandy to Ella",
+    slugForPhoto: "ella",
+  },
+  {
+    title: "Ancient Kingdoms & Rock Citadel",
+    duration: "5",
+    style: "Culture",
+    budget: "Comfortable",
+    interests: "Heritage",
+    season: "July – September",
+    startingPoint: "Colombo",
+    stops: ["Anuradhapura", "Sigiriya", "Polonnaruwa"],
+    restHighlight: "Lakeside resorts beside Tissa Wewa & Parakrama Samudra",
+    transportHighlight: "Northern Line train + short Cultural Triangle drives",
+    slugForPhoto: "sigiriya-rock-fortress",
+  },
+  {
+    title: "Southern Coast, Whales & Safari",
+    duration: "7",
+    style: "Relaxation",
+    budget: "Luxury",
+    interests: "Beach & Relaxation",
+    season: "December – March",
+    startingPoint: "Galle",
+    stops: ["Galle Fort", "Mirissa", "Yala National Park"],
+    restHighlight: "Dutch Fort courtyard villas & Tissa safari eco-lodges",
+    transportHighlight: "Southern Expressway & scenic coastal highway",
+    slugForPhoto: "mirissa-beach",
+  },
+];
+
+const seasonalGuides = [
+  {
+    id: "west-south",
+    label: "Dec – Apr · West, South & Hills",
+    headline: "Dry sunshine in Galle, Mirissa, Kandy & Ella",
+    summary:
+      "The southwest monsoon retreats, leaving calm turquoise seas for whale watching in Mirissa, crisp mornings on Little Adam's Peak, and clear views from Galle Fort.",
+    slugs: ["galle-fort", "mirissa-beach", "ella", "nuwara-eliya"],
+  },
+  {
+    id: "east-north",
+    label: "May – Sep · East Coast & Heritage",
+    headline: "Surf season in Arugam Bay & golden Cultural Triangle days",
+    summary:
+      "While the southwest gets brief showers, the east coast shines. Ride clean point breaks in Arugam Bay and cycle ancient stupas in Anuradhapura and Polonnaruwa.",
+    slugs: [
+      "arugam-bay",
+      "anuradhapura-ancient-city",
+      "polonnaruwa-ancient-city",
+      "sigiriya-rock-fortress",
+    ],
+  },
+  {
+    id: "shoulder",
+    label: "Oct – Nov · Wildlife & Quiet Trails",
+    headline: "Lush green landscapes & peaceful heritage walks",
+    summary:
+      "Inter-monsoon months bring afternoon warmth and fewer crowds at Sigiriya, Kandy's Temple of the Tooth, and Yala's dry-zone lagoons.",
+    slugs: [
+      "temple-of-the-tooth",
+      "sigiriya-rock-fortress",
+      "yala-national-park",
+      "ella",
+    ],
+  },
 ];
 
 function PageIntro({
@@ -101,7 +180,7 @@ const features = [
   {
     icon: "shield",
     title: "Thoughtfully Planned",
-    copy: "Practical travel guidance",
+    copy: "Routes & rest guidance",
   },
   {
     icon: "save",
@@ -119,6 +198,7 @@ function Icon({
 }) {
   const paths: Record<string, React.ReactNode> = {
     arrow: <path d="M4 12h16m-6-6 6 6-6 6" />,
+    back: <path d="M20 12H4m6-6-6 6 6 6" />,
     spark: (
       <>
         <path d="m12 2 2.7 7.3L22 12l-7.3 2.7L12 22l-2.7-7.3L2 12l7.3-2.7Z" />
@@ -202,6 +282,26 @@ function Icon({
       <>
         <circle cx="12" cy="12" r="9" />
         <path d="M12 11v6m0-10v1" />
+      </>
+    ),
+    camera: (
+      <>
+        <path d="M4 7h3l2-2h6l2 2h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2Z" />
+        <circle cx="12" cy="13" r="3.5" />
+      </>
+    ),
+    bed: (
+      <>
+        <path d="M2 20v-8a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v8" />
+        <path d="M4 10V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v4" />
+        <path d="M2 16h20" />
+      </>
+    ),
+    route: (
+      <>
+        <circle cx="6" cy="19" r="3" />
+        <path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15" />
+        <circle cx="18" cy="5" r="3" />
       </>
     ),
   };
@@ -311,10 +411,12 @@ function Photo({
 function Modal({
   title,
   onClose,
+  wide = false,
   children,
 }: {
   title: string;
   onClose: () => void;
+  wide?: boolean;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -332,7 +434,7 @@ function Modal({
       }}
       aria-modal="true"
       aria-labelledby="dialog-title"
-      className="fixed m-auto max-h-[85vh] w-[calc(100%-2rem)] max-w-xl overflow-y-auto rounded-2xl bg-white p-7 text-[#08233f] shadow-2xl backdrop:bg-[#00162e]/75"
+      className={`fixed m-auto max-h-[88vh] w-[calc(100%-1.5rem)] ${wide ? "max-w-3xl" : "max-w-xl"} overflow-y-auto rounded-2xl bg-white p-6 text-[#08233f] shadow-2xl backdrop:bg-[#00162e]/75 md:p-7`}
     >
       <div className="mb-5 flex items-center justify-between gap-4">
         <h2 id="dialog-title" className="text-2xl font-bold">
@@ -341,7 +443,7 @@ function Modal({
         <button
           aria-label="Close dialog"
           onClick={onClose}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 focus-visible:ring-2"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 focus-visible:ring-2"
         >
           <Icon name="close" />
         </button>
@@ -388,6 +490,18 @@ async function generateWithGemini(data: unknown) {
   return result as { trip: Trip };
 }
 
+function buildGoogleMapsRouteUrl(startingPoint: string, stops: Place[]): string {
+  if (stops.length === 0) return "https://www.google.com/maps";
+  const origin = encodeURIComponent(`${startingPoint}, Sri Lanka`);
+  const last = stops[stops.length - 1];
+  const destination = encodeURIComponent(`${last.latitude},${last.longitude}`);
+  const mid = stops
+    .slice(0, -1)
+    .map((p) => `${p.latitude},${p.longitude}`)
+    .join("|");
+  return `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${mid ? `&waypoints=${encodeURIComponent(mid)}` : ""}&travelmode=driving`;
+}
+
 export default function TravelApp({
   initialView = "Home",
   initialPlaces = [],
@@ -428,6 +542,13 @@ export default function TravelApp({
   const [mobileMenu, setMobileMenu] = useState(false);
   const view = initialView;
   const [modal, setModal] = useState<string | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [itineraryTab, setItineraryTab] = useState<
+    "itinerary" | "route" | "rest"
+  >("itinerary");
+  const [seasonTab, setSeasonTab] = useState("west-south");
+
   const [style, setStyle] = useState("Adventure");
   const [duration, setDuration] = useState("3");
   const [budget, setBudget] = useState("All Budget");
@@ -456,6 +577,19 @@ export default function TravelApp({
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }, [view]);
+
+  function openPlaceModal(placeName: string) {
+    setActivePhotoIndex(0);
+    setLightboxOpen(false);
+    setModal(placeName);
+  }
+
+  function openTripModal(selectedTrip: Trip, tab: "itinerary" | "route" | "rest" = "itinerary") {
+    setTrip(selectedTrip);
+    setNotice("");
+    setItineraryTab(tab);
+    setModal("Your Itinerary");
+  }
 
   function navigate(label: string) {
     setMobileMenu(false);
@@ -517,7 +651,7 @@ export default function TravelApp({
           travellers: Number(travellers || 1),
           startingPoint,
         });
-        setTrip(created);
+        openTripModal(created, "itinerary");
       } else {
         const result = await generateWithGemini({
           style,
@@ -528,9 +662,8 @@ export default function TravelApp({
           travellers,
           startingPoint,
         });
-        setTrip(result.trip);
+        openTripModal(result.trip, "itinerary");
       }
-      setModal("Your Itinerary");
     } catch (error) {
       setNotice((error as Error).message);
     } finally {
@@ -569,6 +702,14 @@ export default function TravelApp({
     .filter(({ item }) =>
       item.title.toLowerCase().includes(tripQuery.toLowerCase())
     );
+  const activeModalPlace = places.find((p) => p.name === modal);
+  const activeGalleryImages = activeModalPlace
+    ? activeModalPlace.images.length > 0
+      ? activeModalPlace.images
+      : [activeModalPlace.image].filter(Boolean)
+    : [];
+  const activeSeasonGuide =
+    seasonalGuides.find((g) => g.id === seasonTab) || seasonalGuides[0];
 
   return (
     <div
@@ -667,8 +808,8 @@ export default function TravelApp({
                 alt="Nine Arch Bridge in Ella, Sri Lanka"
                 className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
               />
-              <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#002735]/95 via-[#002735]/45 to-[#001c20]/20" />
-              <div className="mx-auto grid max-w-[1600px] items-center gap-10 px-6 py-10 md:px-[4.3%] lg:min-h-[475px] lg:grid-cols-[1fr_410px] lg:gap-16 lg:py-8 xl:grid-cols-[1fr_435px]">
+              <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#002735]/95 via-[#002735]/55 to-[#001c20]/25" />
+              <div className="mx-auto grid max-w-[1600px] items-center gap-10 px-6 py-10 md:px-[4.3%] lg:min-h-[500px] lg:grid-cols-[1fr_410px] lg:gap-16 lg:py-10 xl:grid-cols-[1fr_440px]">
                 <div className="min-w-0 text-white">
                   <span className="inline-flex items-center gap-2 rounded-full border border-[#1cb683]/60 bg-[#042e34] px-4 py-2 text-sm font-semibold text-[#daef79]">
                     <Icon name="pin" className="text-[#e5e02a]" />
@@ -694,10 +835,10 @@ export default function TravelApp({
                       </svg>
                     </span>
                   </h1>
-                  <p className="mt-5 max-w-[480px] text-base font-medium leading-6 md:text-lg">
-                    Discover the best places, plan your perfect trip
-                    <br className="hidden xl:block" /> with AI, and experience
-                    the beauty of Sri Lanka!
+                  <p className="mt-5 max-w-[500px] text-base font-medium leading-6 md:text-lg">
+                    Discover authentic places, get Gemini-powered routes and
+                    rest recommendations, and save every journey to your
+                    account.
                   </p>
                   <div className="mt-5 flex flex-wrap gap-4">
                     <button onClick={openPlanner} className={primary}>
@@ -706,24 +847,33 @@ export default function TravelApp({
                       <Icon />
                     </button>
                     <button
+                      onClick={() => navigate("Map")}
+                      className="inline-flex min-h-11 items-center gap-3 rounded-full border border-white bg-[#031d38]/40 px-5 py-3 text-sm font-semibold backdrop-blur-sm hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-lime-300"
+                    >
+                      <Icon name="pin" />
+                      Explore Island Map
+                    </button>
+                    <button
                       onClick={() => setModal("Explore Sri Lanka")}
-                      className="inline-flex min-h-11 items-center gap-3 rounded-full border border-white px-5 py-3 text-sm font-semibold focus-visible:ring-2 focus-visible:ring-lime-300"
+                      className="inline-flex min-h-11 items-center gap-2 px-3 py-3 text-sm font-semibold text-[#daef79] hover:underline focus-visible:ring-2 focus-visible:ring-lime-300"
                     >
                       <Icon name="play" />
-                      Discover the Island
+                      How LankaTrails Works
                     </button>
                   </div>
-                  <div className="mt-6 flex items-center gap-3 text-sm text-white">
-                    <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#81bfa0] bg-[#063c34] text-[#b7e36a]">
-                      <Icon name="shield" />
-                    </span>
-                    <div>
-                      <p className="font-semibold">
-                        Made for curious travellers
-                      </p>
-                      <p className="mt-1 text-sm text-slate-300">
-                        Real places. Your pace. A plan that’s yours.
-                      </p>
+                  <div className="mt-6 flex flex-wrap items-center gap-6 text-sm text-white">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#81bfa0] bg-[#063c34] text-[#b7e36a]">
+                        <Icon name="shield" />
+                      </span>
+                      <div>
+                        <p className="font-semibold">
+                          Routes, stays & 50+ verified photos
+                        </p>
+                        <p className="mt-0.5 text-xs text-slate-300">
+                          Real places. Rest stops included. Your pace.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -741,7 +891,8 @@ export default function TravelApp({
                     Plan Your Dream Trip
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-[#344b65]">
-                    Tell us your preferences. Let’s find your perfect itinerary!
+                    Tell us your preferences. Gemini builds your route, daily
+                    activities & places to rest!
                   </p>
                   <div className="mt-5 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
                     {[
@@ -789,7 +940,10 @@ export default function TravelApp({
                         ],
                       },
                     ].map((field) => (
-                      <label key={field.label} className="min-w-0 text-sm font-semibold">
+                      <label
+                        key={field.label}
+                        className="min-w-0 text-sm font-semibold"
+                      >
                         <span className="mb-2 block">{field.label}</span>
                         <span className="flex min-h-12 items-center gap-2 rounded-lg border border-[#d7e1ea] px-3">
                           <Icon
@@ -889,6 +1043,7 @@ export default function TravelApp({
               </div>
             </section>
 
+            {/* Popular Destinations */}
             <section className="mx-auto grid max-w-[1600px] gap-6 px-6 pb-6 pt-8 md:grid-cols-3 md:px-[4.3%] lg:grid-cols-[1.05fr_1fr_1fr_1fr]">
               <div className="min-w-0 md:col-span-3 lg:col-span-1">
                 <p className="flex items-center gap-2 text-sm font-semibold text-[#078a39]">
@@ -903,9 +1058,8 @@ export default function TravelApp({
                 <p
                   className={`mt-3 text-sm leading-5 ${dark ? "text-slate-300" : "text-[#344b65]"}`}
                 >
-                  From ancient heritage to golden beaches,
-                  <br className="hidden xl:block" /> discover the magic of Sri
-                  Lanka.
+                  Click any card to browse 5 authentic photos, route tips, and
+                  places to rest.
                 </p>
                 <button
                   onClick={() => navigate("Destinations")}
@@ -918,19 +1072,23 @@ export default function TravelApp({
               {places.slice(0, 3).map((place) => (
                 <button
                   key={place.name}
-                  onClick={() => setModal(place.name)}
-                  className="group relative isolate h-[205px] overflow-hidden rounded-2xl bg-[#1d5e47] text-left text-white focus-visible:ring-4 focus-visible:ring-green-500 xl:h-[210px]"
+                  onClick={() => openPlaceModal(place.name)}
+                  className="group relative isolate h-[215px] overflow-hidden rounded-2xl bg-[#1d5e47] text-left text-white focus-visible:ring-4 focus-visible:ring-green-500 xl:h-[220px]"
                 >
                   <Photo
                     id={place.image}
                     alt={`${place.name}, Sri Lanka`}
                     className="absolute inset-0 -z-20 h-full w-full object-cover transition duration-500 group-hover:scale-105"
                   />
-                  <span className="absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
+                  <span className="absolute inset-0 -z-10 bg-gradient-to-t from-black/90 via-black/20 to-transparent" />
                   <span
-                    className={`absolute right-2 top-2 rounded-full px-3 py-1.5 text-xs font-bold ${place.color}`}
+                    className={`absolute right-2.5 top-2.5 rounded-full px-3 py-1.5 text-xs font-bold ${place.color}`}
                   >
                     {place.tag}
+                  </span>
+                  <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
+                    <Icon name="camera" className="!h-3.5 !w-3.5" />
+                    {Math.max(1, place.images.length)} photos
                   </span>
                   <span className="absolute bottom-4 left-4 right-4">
                     <span className="flex items-center gap-1.5 text-lg font-bold">
@@ -946,6 +1104,7 @@ export default function TravelApp({
               ))}
             </section>
 
+            {/* Features Bar */}
             <section
               aria-label="Planning features"
               className="mx-auto max-w-[1600px] px-5 md:px-[2.2%]"
@@ -984,6 +1143,7 @@ export default function TravelApp({
               </div>
             </section>
 
+            {/* How It Works */}
             <section className="mx-auto grid max-w-[1600px] items-center gap-8 px-6 py-10 md:px-[4.3%] lg:grid-cols-[1fr_2fr]">
               <div>
                 <p className="text-sm font-semibold text-[#078b3b]">
@@ -996,8 +1156,11 @@ export default function TravelApp({
               <div className="grid gap-5 md:grid-cols-3">
                 {[
                   ["Tell Us Your Preferences", "Travel style, duration, budget"],
-                  ["Let Gemini Plan", "A day-by-day journey for you"],
-                  ["Explore Sri Lanka", "Save, edit, and make memories"],
+                  [
+                    "Let Gemini Plan",
+                    "Daily stops, routes & rest spots for you",
+                  ],
+                  ["Explore Sri Lanka", "View routes, save, edit & travel"],
                 ].map(([title, copy], i) => (
                   <div key={title} className="flex items-start gap-3">
                     <span
@@ -1018,6 +1181,90 @@ export default function TravelApp({
               </div>
             </section>
 
+            {/* Signature Island Routes & Rest Ideas */}
+            <section className="mx-auto max-w-6xl px-6 py-12">
+              <div className="flex flex-wrap items-end justify-between gap-5">
+                <div>
+                  <p className="text-xs font-bold tracking-[0.18em] text-[#087947]">
+                    CURATED ROUTE INSPIRATION
+                  </p>
+                  <h2 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
+                    Ready-to-customize Sri Lanka routes
+                  </h2>
+                </div>
+                <button
+                  onClick={() => navigate("My Trips")}
+                  className="flex min-h-11 items-center gap-2 text-sm font-bold text-[#087947]"
+                >
+                  Open My Saved Trips
+                  <Icon />
+                </button>
+              </div>
+              <div className="mt-8 grid gap-6 md:grid-cols-3">
+                {curatedRoutes.map((routeCard) => {
+                  const photoPlace = places.find(
+                    (p) => p.slug === routeCard.slugForPhoto
+                  );
+                  return (
+                    <article
+                      key={routeCard.title}
+                      className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-[#08233f] shadow-sm"
+                    >
+                      <div className="relative">
+                        <Photo
+                          id={photoPlace?.image || hero?.image || ""}
+                          alt={routeCard.title}
+                          className="h-44 w-full object-cover"
+                        />
+                        <span className="absolute left-4 top-4 rounded-full bg-[#031d38]/90 px-3 py-1 text-xs font-bold text-[#b7e36a]">
+                          {routeCard.duration} Days · {routeCard.style}
+                        </span>
+                      </div>
+                      <div className="flex flex-1 flex-col p-6">
+                        <h3 className="text-xl font-bold">{routeCard.title}</h3>
+                        <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#087947]">
+                          {routeCard.stops.join(" → ")}
+                        </p>
+                        <div className="mt-4 space-y-2.5 text-sm text-slate-600">
+                          <p className="flex items-start gap-2">
+                            <Icon
+                              name="route"
+                              className="mt-0.5 !h-4 !w-4 text-[#087947]"
+                            />
+                            <span>{routeCard.transportHighlight}</span>
+                          </p>
+                          <p className="flex items-start gap-2">
+                            <Icon
+                              name="bed"
+                              className="mt-0.5 !h-4 !w-4 text-[#087947]"
+                            />
+                            <span>{routeCard.restHighlight}</span>
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStyle(routeCard.style);
+                            setDuration(routeCard.duration);
+                            setBudget(routeCard.budget);
+                            setInterests(routeCard.interests);
+                            setSeason(routeCard.season);
+                            setStartingPoint(routeCard.startingPoint);
+                            openPlanner();
+                          }}
+                          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#087947] px-4 text-sm font-bold text-[#087947] transition hover:bg-[#edf8f3]"
+                        >
+                          Load Route into Planner
+                          <Icon name="spark" className="!h-4 !w-4" />
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Go Beyond the Ordinary */}
             <section className="border-y border-[#c8e4dd] bg-[#edf8f3] px-6 py-16 text-[#08233f] md:py-20">
               <div className="mx-auto max-w-6xl">
                 <div className="flex flex-wrap items-end justify-between gap-5">
@@ -1100,7 +1347,100 @@ export default function TravelApp({
               </div>
             </section>
 
-            <section className="mx-auto grid max-w-6xl gap-10 px-6 py-16 md:grid-cols-[.8fr_1.2fr] md:gap-20 md:py-20">
+            {/* Seasonal Monsoon & Travel Essentials Guide */}
+            <section className="mx-auto max-w-6xl px-6 py-16">
+              <div className="rounded-3xl border border-[#d6e7dd] bg-[#082b40] p-7 text-white md:p-10">
+                <p className="text-xs font-bold tracking-[0.2em] text-[#b7e36a]">
+                  SEASONAL ISLAND ADVISOR
+                </p>
+                <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+                  <h2 className="text-2xl font-bold md:text-3xl">
+                    Where the weather shines, month by month
+                  </h2>
+                  <div
+                    className="flex flex-wrap gap-2"
+                    role="tablist"
+                    aria-label="Sri Lanka travel seasons"
+                  >
+                    {seasonalGuides.map((g) => (
+                      <button
+                        key={g.id}
+                        role="tab"
+                        aria-selected={seasonTab === g.id}
+                        onClick={() => setSeasonTab(g.id)}
+                        className={`min-h-10 rounded-full px-4 text-xs font-bold transition ${
+                          seasonTab === g.id
+                            ? "bg-[#1bc75c] text-[#031d38]"
+                            : "bg-[#123d58] text-slate-200 hover:bg-[#194e6f]"
+                        }`}
+                      >
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <p className="mt-6 text-lg font-bold text-[#daef79]">
+                  {activeSeasonGuide.headline}
+                </p>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+                  {activeSeasonGuide.summary}
+                </p>
+                <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {activeSeasonGuide.slugs
+                    .map((slug) => places.find((p) => p.slug === slug))
+                    .filter((p): p is Place => Boolean(p))
+                    .map((place) => (
+                      <button
+                        key={place.id}
+                        onClick={() => openPlaceModal(place.name)}
+                        className="group overflow-hidden rounded-xl border border-white/15 bg-[#0d354e] text-left transition hover:border-[#44d23c]"
+                      >
+                        <Photo
+                          id={place.image}
+                          alt={place.name}
+                          className="h-32 w-full object-cover transition duration-300 group-hover:scale-105"
+                        />
+                        <div className="p-3.5">
+                          <p className="text-sm font-bold text-white">
+                            {place.name}
+                          </p>
+                          <p className="mt-1 text-xs text-slate-300">
+                            {place.bestTimeToVisit}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                </div>
+                <div className="mt-7 grid gap-4 border-t border-white/15 pt-6 sm:grid-cols-3">
+                  {[
+                    [
+                      "Scenic Rail & Highways",
+                      "Book Kandy–Ella observation seats early; Southern Expressway cuts Galle travel to 2 hours.",
+                    ],
+                    [
+                      "Where to Rest Comfortably",
+                      "Mix lakeside eco-lodges, tea-estate bungalows, and shaded midday cafe breaks to pace your days.",
+                    ],
+                    [
+                      "Sacred Sites & Cash",
+                      "Carry LKR cash for tuk-tuks & stupas, and pack modest shoulder/knee cover for temples.",
+                    ],
+                  ].map(([title, desc]) => (
+                    <div key={title} className="rounded-xl bg-[#0d354e] p-4">
+                      <p className="text-sm font-bold text-[#b7e36a]">
+                        {title}
+                      </p>
+                      <p className="mt-1.5 text-xs leading-5 text-slate-300">
+                        {desc}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* FAQ */}
+            <section className="mx-auto grid max-w-6xl gap-10 px-6 pb-16 pt-4 md:grid-cols-[.8fr_1.2fr] md:gap-20 md:pb-20">
               <div>
                 <span className="inline-flex rounded-full bg-[#e3f6e9] p-3 text-[#087947]">
                   <Icon name="info" className="!h-7 !w-7" />
@@ -1128,6 +1468,7 @@ export default function TravelApp({
               <FaqList />
             </section>
 
+            {/* Bottom CTA */}
             <section className="px-5 pb-16">
               <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl bg-[#063c3b] px-7 py-12 text-center text-white md:px-16">
                 <span
@@ -1163,7 +1504,7 @@ export default function TravelApp({
             <PageIntro
               eyebrow="A SMALL ISLAND. ENDLESS POSSIBILITIES."
               title="Find your kind of paradise."
-              description="Ancient wonders, misty mountains, and a coastline worth slowing down for. Where will your curiosity take you?"
+              description="Click any destination to explore 5 verified photos, how to get there, and recommended places to rest."
             />
             <section className="mx-auto min-h-[55vh] max-w-6xl px-6 py-10">
               <div className="flex flex-wrap items-center justify-between gap-5">
@@ -1190,14 +1531,15 @@ export default function TravelApp({
                 />
               </div>
               <p role="status" className="my-6 text-sm">
-                {shown.length} places to discover · Curated travel inspiration
+                {shown.length} places to discover · Click a card to inspect 5
+                photos & rest spots
               </p>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {shown.map((place) => (
                   <button
                     key={place.name}
-                    onClick={() => setModal(place.name)}
-                    className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-[#08233f] shadow-sm focus-visible:ring-2 focus-visible:ring-green-600"
+                    onClick={() => openPlaceModal(place.name)}
+                    className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-[#08233f] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-green-600"
                   >
                     <div className="relative overflow-hidden">
                       <Photo
@@ -1210,6 +1552,10 @@ export default function TravelApp({
                       >
                         {place.tag}
                       </span>
+                      <span className="absolute right-3 top-4 inline-flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                        <Icon name="camera" className="!h-3.5 !w-3.5" />
+                        {Math.max(1, place.images.length)}
+                      </span>
                     </div>
                     <div className="p-6">
                       <p className="text-xs font-semibold uppercase tracking-wider text-green-800">
@@ -1220,7 +1566,7 @@ export default function TravelApp({
                         {place.detail}
                       </p>
                       <span className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 text-sm font-bold text-[#087947]">
-                        Discover {place.name}
+                        Explore {place.name} (5 Photos)
                         <Icon />
                       </span>
                     </div>
@@ -1255,7 +1601,7 @@ export default function TravelApp({
             <PageIntro
               eyebrow="SEE THE ISLAND DIFFERENTLY"
               title="A little pin. A whole new possibility."
-              description="From ancient kingdoms to the Indian Ocean, discover where your next story could begin. Pick a destination to explore."
+              description="Switch between Explorer, Satellite, and Street layers. Click any destination pin or list card to preview photos and plan your route."
             />
             <section className="mx-auto max-w-7xl px-6 py-10">
               <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
@@ -1265,25 +1611,30 @@ export default function TravelApp({
                   <Icon name="spark" />
                 </button>
               </div>
-              <div className="grid items-start gap-6 lg:grid-cols-[310px_1fr]">
-                <div className="space-y-3">
+              <div className="grid items-start gap-6 lg:grid-cols-[330px_1fr]">
+                <div className="max-h-[620px] space-y-3 overflow-y-auto pr-1">
                   {places.map((place, i) => (
                     <button
                       key={place.id}
                       aria-pressed={selectedPlace === place.id}
                       onClick={() => setSelectedPlace(place.id)}
-                      className={`flex min-h-20 w-full items-center gap-4 rounded-xl border p-4 text-left text-[#08233f] focus-visible:ring-2 focus-visible:ring-green-600 ${selectedPlace === place.id ? "border-green-600 bg-green-50" : "border-slate-200 bg-white"}`}
+                      className={`flex min-h-20 w-full items-center gap-3.5 rounded-xl border p-3 text-left text-[#08233f] transition focus-visible:ring-2 focus-visible:ring-green-600 ${selectedPlace === place.id ? "border-green-600 bg-green-50 shadow-sm" : "border-slate-200 bg-white hover:border-green-400"}`}
                     >
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#e5f7ec] text-sm font-bold text-green-800">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e5f7ec] text-sm font-bold text-green-800">
                         {i + 1}
                       </span>
-                      <span>
-                        <span className="block text-base font-bold">
+                      <div className="min-w-0 flex-1">
+                        <span className="block truncate text-base font-bold">
                           {place.name}
                         </span>
-                        <span className="mt-1 block text-sm text-slate-600">
+                        <span className="mt-0.5 block truncate text-xs text-slate-600">
                           {place.subtitle}
                         </span>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${place.color}`}
+                      >
+                        {place.tag}
                       </span>
                     </button>
                   ))}
@@ -1293,27 +1644,42 @@ export default function TravelApp({
                     places={places}
                     selected={selectedPlace}
                     onSelect={setSelectedPlace}
+                    heightClass="h-[460px] md:h-[540px]"
                   />
                   {selectedPlace && (
-                    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-5 text-[#08233f]">
-                      <h3 className="text-lg font-bold">
-                        {places.find((p) => p.id === selectedPlace)?.name}
-                      </h3>
-                      <p className="mt-2 text-sm leading-7 text-slate-600">
-                        {places.find((p) => p.id === selectedPlace)?.detail}
-                      </p>
-                      <button
-                        onClick={() =>
-                          setModal(
-                            places.find((p) => p.id === selectedPlace)?.name ||
-                              null
-                          )
+                    <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-[#08233f] shadow-sm sm:flex-row sm:items-center">
+                      <Photo
+                        id={
+                          places.find((p) => p.id === selectedPlace)?.image ||
+                          ""
                         }
-                        className="mt-2 flex min-h-11 items-center gap-3 text-sm font-bold text-green-800"
-                      >
-                        Destination Details
-                        <Icon />
-                      </button>
+                        alt={
+                          places.find((p) => p.id === selectedPlace)?.name || ""
+                        }
+                        className="h-28 w-full shrink-0 rounded-xl object-cover sm:w-44"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-lg font-bold">
+                          {places.find((p) => p.id === selectedPlace)?.name}
+                        </h3>
+                        <p className="mt-1.5 text-sm leading-6 text-slate-600">
+                          {places.find((p) => p.id === selectedPlace)?.detail}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-3">
+                          <button
+                            onClick={() =>
+                              openPlaceModal(
+                                places.find((p) => p.id === selectedPlace)
+                                  ?.name || ""
+                              )
+                            }
+                            className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#e3f6e9] px-4 text-sm font-bold text-[#087947]"
+                          >
+                            View 5 Photos & Rest Spots
+                            <Icon name="camera" className="!h-4 !w-4" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1327,7 +1693,7 @@ export default function TravelApp({
             <PageIntro
               eyebrow="YOUR PERSONAL COLLECTION"
               title="Good adventures are worth keeping."
-              description="All your island inspiration, in one little place. Revisit a route, dream a little more, or start something new."
+              description="Click any saved trip to inspect your route map, travel transfers, places to rest, and editable day-by-day plan."
             />
             <section className="mx-auto min-h-[50vh] max-w-6xl px-6 py-10">
               <div className="flex flex-wrap items-center justify-between gap-5">
@@ -1340,7 +1706,7 @@ export default function TravelApp({
                   </h2>
                   <p className="mt-2 text-sm">
                     {user
-                      ? "Privately saved to your account · Available when you sign in"
+                      ? "Privately saved to your account · Click any trip to see routes & rest spots"
                       : "Sign in to access your private trip collection"}
                   </p>
                 </div>
@@ -1383,34 +1749,58 @@ export default function TravelApp({
                   {matchingTrips.map(({ item, index }) => (
                     <article
                       key={item.id || index}
-                      className="overflow-hidden rounded-2xl border border-slate-200 bg-white text-[#08233f]"
+                      className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-[#08233f] shadow-sm transition hover:shadow-md"
                     >
-                      <Photo
-                        id={
-                          places.find((p) => p.id === item.days[0]?.destination)
-                            ?.image ||
-                          hero?.image ||
-                          ""
-                        }
-                        alt="Sri Lanka trip inspiration"
-                        className="h-40 w-full object-cover"
-                      />
-                      <div className="p-6">
-                        <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
-                          {item.duration} days · {item.style}
-                        </span>
-                        <h2 className="mt-4 text-xl font-bold">{item.title}</h2>
-                        <p className="mt-2 text-sm text-slate-600">
+                      <button
+                        type="button"
+                        onClick={() => openTripModal(item, "itinerary")}
+                        className="text-left"
+                      >
+                        <Photo
+                          id={
+                            places.find(
+                              (p) => p.id === item.days[0]?.destination
+                            )?.image ||
+                            hero?.image ||
+                            ""
+                          }
+                          alt="Sri Lanka trip inspiration"
+                          className="h-44 w-full object-cover"
+                        />
+                      </button>
+                      <div className="flex flex-1 flex-col p-6">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
+                            {item.duration} days · {item.style}
+                          </span>
+                          <span className="text-xs font-semibold text-slate-500">
+                            From {item.startingPoint}
+                          </span>
+                        </div>
+                        <h2 className="mt-3 text-xl font-bold">{item.title}</h2>
+                        <p className="mt-1.5 text-sm text-slate-600">
                           {item.interests} · {item.budget}
                         </p>
-                        <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+                        <div className="mt-4 flex flex-wrap gap-2">
                           <button
-                            className="flex min-h-11 items-center gap-3 text-sm font-bold text-[#087947]"
-                            onClick={() => {
-                              setTrip(item);
-                              setNotice("");
-                              setModal("Your Itinerary");
-                            }}
+                            className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-[#e3f6e9] px-3.5 text-xs font-bold text-[#087947]"
+                            onClick={() => openTripModal(item, "route")}
+                          >
+                            <Icon name="route" className="!h-3.5 !w-3.5" />
+                            View Route
+                          </button>
+                          <button
+                            className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-[#eef5fb] px-3.5 text-xs font-bold text-[#0c4a6e]"
+                            onClick={() => openTripModal(item, "rest")}
+                          >
+                            <Icon name="bed" className="!h-3.5 !w-3.5" />
+                            Places to Rest
+                          </button>
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                          <button
+                            className="flex min-h-10 items-center gap-2 text-sm font-bold text-[#087947]"
+                            onClick={() => openTripModal(item, "itinerary")}
                           >
                             Open Itinerary
                             <Icon />
@@ -1418,7 +1808,7 @@ export default function TravelApp({
                           <button
                             disabled={busy}
                             aria-label={`Delete ${item.title}`}
-                            className="min-h-11 px-2 text-sm text-red-700"
+                            className="min-h-10 px-2 text-sm text-red-700"
                             onClick={() => {
                               setTrip(item);
                               setModal("Delete Trip");
@@ -1479,10 +1869,9 @@ export default function TravelApp({
                   somewhere you never want to leave.
                 </p>
                 <p className="mt-4 text-sm leading-7">
-                  LankaTrails is a travel-planning concept built to help you
-                  find those moments. Start with your interests, your pace, and
-                  your budget. Then turn a little inspiration into a journey of
-                  your own.
+                  LankaTrails is built to help you find those moments—complete
+                  with authentic destination photography, realistic routes, and
+                  thoughtful places to rest along the way.
                 </p>
                 <button onClick={openPlanner} className={`${primary} mt-7`}>
                   Find My Trail
@@ -1505,12 +1894,12 @@ export default function TravelApp({
                     [
                       "leaf",
                       "Travel a little slower",
-                      "Leave room for local food, small discoveries, and the people you meet along the way.",
+                      "Leave room for scenic train rides, rest stops, local food, and the people you meet.",
                     ],
                     [
                       "shield",
                       "Honest inspiration",
-                      "Clearly labelled AI suggestions and manual plans. Estimated budgets, never fake bookings or guaranteed prices.",
+                      "Clearly labelled AI suggestions and manual plans. Estimated budgets, never fake bookings.",
                     ],
                   ].map(([icon, title, text]) => (
                     <article
@@ -1714,9 +2103,7 @@ export default function TravelApp({
         </div>
         <div className="mx-auto flex max-w-[1530px] flex-wrap items-center justify-between gap-6">
           <Brand small />
-          <p className="text-sm">
-            © 2026 LankaTrails. All rights reserved.
-          </p>
+          <p className="text-sm">© 2026 LankaTrails. All rights reserved.</p>
           <div className="flex flex-wrap gap-4 text-sm text-slate-300">
             {[
               "Privacy Policy",
@@ -1742,7 +2129,14 @@ export default function TravelApp({
       </footer>
 
       {modal && (
-        <Modal title={modal} onClose={() => setModal(null)}>
+        <Modal
+          title={modal}
+          wide={modal === "Your Itinerary" || Boolean(activeModalPlace)}
+          onClose={() => {
+            setLightboxOpen(false);
+            setModal(null);
+          }}
+        >
           {modal === "Sign In" ? (
             <form
               onSubmit={async (e) => {
@@ -1773,8 +2167,7 @@ export default function TravelApp({
                     });
                     if (res.error) {
                       throw new Error(
-                        res.error.message ||
-                          "Email or password is incorrect."
+                        res.error.message || "Email or password is incorrect."
                       );
                     }
                   }
@@ -1948,7 +2341,7 @@ export default function TravelApp({
                 <div key={place.id}>
                   <h3 className="text-sm font-bold">{place.name}</h3>
                   <p className="mt-1 break-words text-xs leading-6 text-slate-600">
-                    {place.credit?.split(" · https:")[0] || "Unsplash"}
+                    {place.credit?.split(" · https:")[0] || "Wikimedia Commons"}
                   </p>
                   {place.credit?.includes("https:") && (
                     <a
@@ -1971,7 +2364,7 @@ export default function TravelApp({
                   : "Created with Gemini"}{" "}
                 · Saved to your account
               </p>
-              <label className="mt-4 block text-sm font-semibold">
+              <label className="mt-3 block text-sm font-semibold">
                 Trip title
                 <input
                   aria-label="Trip title"
@@ -1981,68 +2374,264 @@ export default function TravelApp({
                   className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 px-3 text-xl font-bold outline-none focus:ring-2 focus:ring-green-600"
                 />
               </label>
-              <p className="my-4 text-sm text-slate-600">
+              <p className="my-3 text-sm text-slate-600">
                 {trip.duration} days · {trip.travellers} traveller
-                {trip.travellers > 1 ? "s" : ""} · From {trip.startingPoint}
+                {trip.travellers > 1 ? "s" : ""} · Starting from{" "}
+                {trip.startingPoint}
               </p>
-              <SriLankaMap places={tripPlaces} route />
-              <div className="mt-5 space-y-4">
-                {trip.days.map((day, i) => (
-                  <section
-                    key={i}
-                    className="rounded-xl border border-[#dae8df] bg-[#f5faf7] p-4"
+
+              {/* Tab Switcher inside Trip Modal */}
+              <div
+                className="mb-5 grid grid-cols-3 rounded-xl bg-[#eef5f1] p-1"
+                role="tablist"
+                aria-label="Trip details tabs"
+              >
+                {[
+                  { id: "itinerary", label: "Day-by-Day Plan" },
+                  { id: "route", label: "Route & Map" },
+                  { id: "rest", label: "Where to Rest" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={itineraryTab === tab.id}
+                    onClick={() =>
+                      setItineraryTab(tab.id as "itinerary" | "route" | "rest")
+                    }
+                    className={`min-h-10 rounded-lg px-2 text-xs font-bold transition sm:text-sm ${
+                      itineraryTab === tab.id
+                        ? "bg-white text-[#087947] shadow-sm"
+                        : "text-slate-600 hover:text-[#08233f]"
+                    }`}
                   >
-                    <p className="text-xs font-bold uppercase tracking-wide text-green-800">
-                      DAY {i + 1} ·{" "}
-                      {places.find((p) => p.id === day.destination)?.name ||
-                        "Destination"}
-                    </p>
-                    <label className="mt-3 block text-sm font-semibold">
-                      Day title
-                      <input
-                        value={day.title}
-                        maxLength={120}
-                        onChange={(e) =>
-                          setTrip({
-                            ...trip,
-                            days: trip.days.map((entry, j) =>
-                              j === i
-                                ? { ...entry, title: e.target.value }
-                                : entry
-                            ),
-                          })
-                        }
-                        className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 font-normal focus:ring-2 focus:ring-green-600"
-                      />
-                    </label>
-                    <label className="mt-3 block text-sm font-semibold">
-                      Activities
-                      <textarea
-                        rows={4}
-                        maxLength={2000}
-                        value={day.description}
-                        onChange={(e) =>
-                          setTrip({
-                            ...trip,
-                            days: trip.days.map((entry, j) =>
-                              j === i
-                                ? { ...entry, description: e.target.value }
-                                : entry
-                            ),
-                          })
-                        }
-                        className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm font-normal leading-6 focus:ring-2 focus:ring-green-600"
-                      />
-                    </label>
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      {day.travelNote}
-                    </p>
-                    <p className="mt-3 text-sm font-bold text-green-800">
-                      Est. LKR {day.estimatedCost.toLocaleString()} / person
-                    </p>
-                  </section>
+                    {tab.label}
+                  </button>
                 ))}
               </div>
+
+              {itineraryTab === "route" && (
+                <div className="space-y-4">
+                  <SriLankaMap
+                    places={tripPlaces}
+                    route
+                    heightClass="h-[340px] md:h-[400px]"
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d6e7dd] bg-[#f5faf7] p-4">
+                    <div>
+                      <p className="text-sm font-bold text-[#08233f]">
+                        Full Route Navigation
+                      </p>
+                      <p className="text-xs text-slate-600">
+                        {trip.startingPoint} →{" "}
+                        {tripPlaces.map((p) => p.name).join(" → ")}
+                      </p>
+                    </div>
+                    <a
+                      href={buildGoogleMapsRouteUrl(
+                        trip.startingPoint,
+                        tripPlaces
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#087947] px-4 text-xs font-bold text-white hover:brightness-110"
+                    >
+                      Open in Google Maps
+                      <Icon name="arrow" className="!h-3.5 !w-3.5" />
+                    </a>
+                  </div>
+                  <div className="space-y-3">
+                    {trip.days.map((day, i) => {
+                      const stopPlace = places.find(
+                        (p) => p.id === day.destination
+                      );
+                      return (
+                        <div
+                          key={i}
+                          className="flex gap-3 rounded-xl border border-slate-200 bg-white p-4"
+                        >
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#087947] text-xs font-bold text-white">
+                            {i + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <h3 className="text-sm font-bold">
+                                Day {i + 1}: {stopPlace?.name || "Destination"}
+                              </h3>
+                              {day.travelDuration && (
+                                <span className="rounded-full bg-[#eef5fb] px-2.5 py-0.5 text-xs font-semibold text-[#0c4a6e]">
+                                  {day.travelDuration}
+                                </span>
+                              )}
+                            </div>
+                            {day.transportMode && (
+                              <p className="mt-1 text-xs font-semibold text-[#087947]">
+                                Transport: {day.transportMode}
+                              </p>
+                            )}
+                            <p className="mt-1.5 text-sm leading-6 text-slate-600">
+                              {day.routeTip ||
+                                stopPlace?.gettingThere ||
+                                day.travelNote}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {itineraryTab === "rest" && (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-600">
+                    Recommended stays, guesthouses, and quiet refreshment stops
+                    along your {trip.duration}-day route.
+                  </p>
+                  {trip.days.map((day, i) => {
+                    const stopPlace = places.find(
+                      (p) => p.id === day.destination
+                    );
+                    return (
+                      <section
+                        key={i}
+                        className="rounded-xl border border-[#d6e7dd] bg-[#f5faf7] p-4"
+                      >
+                        <p className="text-xs font-bold uppercase tracking-wide text-[#087947]">
+                          Day {i + 1} · {stopPlace?.name || "Destination"}
+                        </p>
+                        {day.restRecommendation && (
+                          <p className="mt-2 rounded-lg bg-white p-3 text-sm leading-6 text-[#08233f] shadow-xs">
+                            <strong className="font-semibold">
+                              Trip Rest Note:{" "}
+                            </strong>
+                            {day.restRecommendation}
+                          </p>
+                        )}
+                        {stopPlace && stopPlace.restSpots.length > 0 && (
+                          <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                            {stopPlace.restSpots.map((spot) => (
+                              <div
+                                key={spot.name}
+                                className="rounded-lg border border-slate-200 bg-white p-3"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="text-xs font-bold text-[#08233f]">
+                                    {spot.name}
+                                  </p>
+                                  <span className="shrink-0 rounded-full bg-[#e3f6e9] px-2 py-0.5 text-[10px] font-bold text-[#087947]">
+                                    {spot.type}
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">
+                                  {spot.priceRange}
+                                </p>
+                                <p className="mt-1 text-xs leading-5 text-slate-600">
+                                  {spot.note}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              )}
+
+              {itineraryTab === "itinerary" && (
+                <>
+                  <SriLankaMap
+                    places={tripPlaces}
+                    route
+                    heightClass="h-[260px] md:h-[300px]"
+                  />
+                  <div className="mt-5 space-y-4">
+                    {trip.days.map((day, i) => {
+                      const stopPlace = places.find(
+                        (p) => p.id === day.destination
+                      );
+                      return (
+                        <section
+                          key={i}
+                          className="rounded-xl border border-[#dae8df] bg-[#f5faf7] p-4"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-xs font-bold uppercase tracking-wide text-green-800">
+                              DAY {i + 1} · {stopPlace?.name || "Destination"}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {day.transportMode && (
+                                <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-[#08233f]">
+                                  {day.transportMode}
+                                </span>
+                              )}
+                              {day.travelDuration && (
+                                <span className="rounded-full bg-[#e3f6e9] px-2.5 py-0.5 text-[11px] font-semibold text-[#087947]">
+                                  {day.travelDuration}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <label className="mt-3 block text-sm font-semibold">
+                            Day title
+                            <input
+                              value={day.title}
+                              maxLength={120}
+                              onChange={(e) =>
+                                setTrip({
+                                  ...trip,
+                                  days: trip.days.map((entry, j) =>
+                                    j === i
+                                      ? { ...entry, title: e.target.value }
+                                      : entry
+                                  ),
+                                })
+                              }
+                              className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 font-normal focus:ring-2 focus:ring-green-600"
+                            />
+                          </label>
+                          <label className="mt-3 block text-sm font-semibold">
+                            Activities
+                            <textarea
+                              rows={4}
+                              maxLength={2000}
+                              value={day.description}
+                              onChange={(e) =>
+                                setTrip({
+                                  ...trip,
+                                  days: trip.days.map((entry, j) =>
+                                    j === i
+                                      ? { ...entry, description: e.target.value }
+                                      : entry
+                                  ),
+                                })
+                              }
+                              className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm font-normal leading-6 focus:ring-2 focus:ring-green-600"
+                            />
+                          </label>
+                          {day.restRecommendation && (
+                            <p className="mt-2.5 rounded-lg bg-white/90 px-3 py-2 text-xs leading-5 text-slate-700">
+                              <strong className="text-[#087947]">
+                                Where to rest:{" "}
+                              </strong>
+                              {day.restRecommendation}
+                            </p>
+                          )}
+                          <p className="mt-2.5 text-sm leading-6 text-slate-600">
+                            {day.travelNote}
+                          </p>
+                          <p className="mt-2 text-sm font-bold text-green-800">
+                            Est. LKR {day.estimatedCost.toLocaleString()} /
+                            person
+                          </p>
+                        </section>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
               <div className="mt-5 rounded-xl bg-[#e6f5ec] p-5">
                 <p className="text-sm">
                   Estimated trip budget for {trip.travellers} traveller
@@ -2132,34 +2721,201 @@ export default function TravelApp({
                 and activity costs will vary.
               </p>
             </>
-          ) : places.some((p) => p.name === modal) ? (
+          ) : activeModalPlace ? (
             <>
-              <Photo
-                id={places.find((p) => p.name === modal)!.image}
-                alt={modal}
-                className="h-56 w-full rounded-xl object-cover"
-              />
-              <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-green-800">
-                {places.find((p) => p.name === modal)!.subtitle}
-              </p>
-              <p className="mt-3 text-sm leading-7 text-slate-600">
-                {places.find((p) => p.name === modal)!.detail}
-              </p>
-              {places.find((p) => p.name === modal)!.seasonNote && (
-                <p className="mt-3 text-xs font-medium text-slate-500">
-                  {places.find((p) => p.name === modal)!.seasonNote}
-                </p>
+              {/* 5-Photo Gallery Viewer for this Place */}
+              <div className="relative overflow-hidden rounded-xl bg-slate-900">
+                <Photo
+                  id={
+                    activeGalleryImages[activePhotoIndex] ||
+                    activeModalPlace.image
+                  }
+                  alt={`${activeModalPlace.name} photo ${activePhotoIndex + 1}`}
+                  className={`${lightboxOpen ? "h-[60vh]" : "h-64 sm:h-80"} w-full object-cover transition-all`}
+                />
+                {activeGalleryImages.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Previous photo"
+                      onClick={() =>
+                        setActivePhotoIndex(
+                          (activePhotoIndex - 1 + activeGalleryImages.length) %
+                            activeGalleryImages.length
+                        )
+                      }
+                      className="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                    >
+                      <Icon name="back" className="!h-4 !w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Next photo"
+                      onClick={() =>
+                        setActivePhotoIndex(
+                          (activePhotoIndex + 1) % activeGalleryImages.length
+                        )
+                      }
+                      className="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                    >
+                      <Icon name="arrow" className="!h-4 !w-4" />
+                    </button>
+                  </>
+                )}
+                <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+                  <span className="rounded-full bg-black/65 px-3 py-1 text-xs font-bold text-white">
+                    Photo {activePhotoIndex + 1} /{" "}
+                    {Math.max(1, activeGalleryImages.length)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setLightboxOpen(!lightboxOpen)}
+                    className="rounded-full bg-black/65 px-3 py-1 text-xs font-bold text-white hover:bg-black/85"
+                  >
+                    {lightboxOpen ? "Compact View" : "Expand Photo"}
+                  </button>
+                </div>
+              </div>
+
+              {activeGalleryImages.length > 1 && (
+                <div className="mt-3 grid grid-cols-5 gap-2">
+                  {activeGalleryImages.slice(0, 5).map((imgUrl, idx) => (
+                    <button
+                      key={imgUrl}
+                      type="button"
+                      aria-label={`View photo ${idx + 1} of ${activeModalPlace.name}`}
+                      onClick={() => setActivePhotoIndex(idx)}
+                      className={`overflow-hidden rounded-lg border-2 transition ${
+                        activePhotoIndex === idx
+                          ? "border-[#087947] ring-2 ring-[#087947]/30"
+                          : "border-transparent opacity-75 hover:opacity-100"
+                      }`}
+                    >
+                      <Photo
+                        id={imgUrl}
+                        alt={`${activeModalPlace.name} thumbnail ${idx + 1}`}
+                        className="h-14 w-full object-cover sm:h-16"
+                      />
+                    </button>
+                  ))}
+                </div>
               )}
-              <button
-                onClick={() => {
-                  setModal(null);
-                  openPlanner();
-                }}
-                className={`${primary} mt-5`}
-              >
-                Plan Your Visit
-                <Icon />
-              </button>
+
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-bold ${activeModalPlace.color}`}
+                >
+                  {activeModalPlace.tag}
+                </span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-green-800">
+                  {activeModalPlace.subtitle}
+                </span>
+              </div>
+
+              <p className="mt-3 text-sm leading-7 text-slate-600">
+                {activeModalPlace.detail}
+              </p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl bg-[#f5faf7] p-3.5">
+                  <p className="text-xs font-bold uppercase text-[#087947]">
+                    Best Time to Visit
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    {activeModalPlace.bestTimeToVisit}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-[#f5faf7] p-3.5">
+                  <p className="text-xs font-bold uppercase text-[#087947]">
+                    Estimated Daily Budget
+                  </p>
+                  <p className="mt-1 text-sm font-semibold">
+                    LKR {activeModalPlace.estimatedDailyBudget.toLocaleString()}{" "}
+                    / day
+                  </p>
+                </div>
+              </div>
+
+              {activeModalPlace.highlights.length > 0 && (
+                <div className="mt-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Top Highlights
+                  </h3>
+                  <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
+                    {activeModalPlace.highlights.map((h) => (
+                      <li key={h} className="flex items-start gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#087947]" />
+                        <span>{h}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#08233f]">
+                  <Icon name="route" className="!h-4 !w-4 text-[#087947]" />
+                  Route & Getting There
+                </p>
+                <p className="mt-1.5 text-sm leading-6 text-slate-600">
+                  {activeModalPlace.gettingThere}
+                </p>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${activeModalPlace.latitude},${activeModalPlace.longitude}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-[#087947] underline"
+                >
+                  Open location in Google Maps
+                </a>
+              </div>
+
+              {activeModalPlace.restSpots.length > 0 && (
+                <div className="mt-4">
+                  <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#08233f]">
+                    <Icon name="bed" className="!h-4 !w-4 text-[#087947]" />
+                    Where to Rest & Stay
+                  </p>
+                  <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
+                    {activeModalPlace.restSpots.map((spot) => (
+                      <div
+                        key={spot.name}
+                        className="rounded-xl border border-[#d7e7dc] bg-[#f5faf7] p-3"
+                      >
+                        <p className="text-xs font-bold text-[#08233f]">
+                          {spot.name}
+                        </p>
+                        <p className="mt-0.5 text-[11px] font-semibold text-[#087947]">
+                          {spot.type} · {spot.priceRange}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">
+                          {spot.note}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  onClick={() => {
+                    setModal(null);
+                    openPlanner();
+                  }}
+                  className={primary}
+                >
+                  Plan Your Visit
+                  <Icon />
+                </button>
+                <Link
+                  href={`/destinations/${activeModalPlace.slug}`}
+                  onClick={() => setModal(null)}
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#087947] px-5 text-sm font-bold text-[#087947] hover:bg-[#edf8f3]"
+                >
+                  Open Full Place Page
+                </Link>
+              </div>
             </>
           ) : (
             <div className="text-sm leading-7 text-slate-600">
@@ -2169,7 +2925,7 @@ export default function TravelApp({
                   ? "LankaTrails is a planning tool, not a booking service. AI routes and budget estimates may be inaccurate and must be checked independently. No accommodation, transport, availability, or prices are guaranteed. Generation is limited to five attempts per account per hour."
                   : modal === "Travel Guidance"
                     ? "Check local weather and monsoon seasons, verify transport schedules, respect sacred sites, and use licensed guides where needed. Map lines show stop order, not navigable driving routes. Never rely on AI for emergency, medical, or safety-critical advice."
-                    : "From Sigiriya’s ancient fortress to the tea-covered hills of Ella and the golden beaches of Mirissa, discover an island full of possibilities. Explore the destination map, choose your preferences, and let Gemini draft an itinerary you can make your own."}
+                    : "From Sigiriya’s ancient fortress to the tea-covered hills of Ella and the golden beaches of Mirissa, discover an island full of possibilities. Explore the destination map, browse 5 photos per destination, and let Gemini draft an itinerary complete with routes and rest recommendations."}
             </div>
           )}
         </Modal>

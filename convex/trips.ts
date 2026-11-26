@@ -37,6 +37,10 @@ const dayInputValidator = v.object({
   description: v.string(),
   travelNote: v.string(),
   estimatedCost: v.number(),
+  transportMode: v.optional(v.string()),
+  travelDuration: v.optional(v.string()),
+  routeTip: v.optional(v.string()),
+  restRecommendation: v.optional(v.string()),
 });
 
 function validateText(
@@ -50,6 +54,16 @@ function validateText(
     throw new ConvexError(`${label} must be ${min}–${max} characters.`);
   }
   return trimmed;
+}
+
+function validateOptionalText(
+  value: string | undefined,
+  max: number
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  return trimmed.slice(0, max);
 }
 
 function assertChoice<T extends readonly string[]>(
@@ -129,6 +143,10 @@ function formatTrip(doc: Doc<"trips">) {
       description: day.description,
       travelNote: day.travelNote,
       estimatedCost: day.estimatedCost,
+      transportMode: day.transportMode,
+      travelDuration: day.travelDuration,
+      routeTip: day.routeTip,
+      restRecommendation: day.restRecommendation,
     })),
   };
 }
@@ -234,10 +252,18 @@ export const createTrip = mutation({
   handler: async (ctx, args) => {
     const profile = await getOrCreateProfile(ctx);
 
-    if (!DURATION_OPTIONS.includes(args.duration as (typeof DURATION_OPTIONS)[number])) {
+    if (
+      !DURATION_OPTIONS.includes(
+        args.duration as (typeof DURATION_OPTIONS)[number]
+      )
+    ) {
       throw new ConvexError("Choose a supported trip duration.");
     }
-    if (!Number.isInteger(args.travellers) || args.travellers < 1 || args.travellers > 12) {
+    if (
+      !Number.isInteger(args.travellers) ||
+      args.travellers < 1 ||
+      args.travellers > 12
+    ) {
       throw new ConvexError("Choose 1–12 travellers.");
     }
 
@@ -268,7 +294,9 @@ export const createTrip = mutation({
         day.estimatedCost < 0 ||
         day.estimatedCost > 1000000
       ) {
-        throw new ConvexError("Day estimated cost must be between 0 and 1,000,000.");
+        throw new ConvexError(
+          "Day estimated cost must be between 0 and 1,000,000."
+        );
       }
       const estimatedCost = Math.round(day.estimatedCost);
       totalBudget += estimatedCost * args.travellers;
@@ -276,8 +304,17 @@ export const createTrip = mutation({
         destinationId: day.destinationId,
         title: validateText(day.title, 2, 120, "Day title"),
         description: validateText(day.description, 10, 2000, "Day description"),
-        travelNote: validateText(day.travelNote || "Verify local transport.", 2, 500, "Travel note"),
+        travelNote: validateText(
+          day.travelNote || "Verify local transport.",
+          2,
+          500,
+          "Travel note"
+        ),
         estimatedCost,
+        transportMode: validateOptionalText(day.transportMode, 120),
+        travelDuration: validateOptionalText(day.travelDuration, 120),
+        routeTip: validateOptionalText(day.routeTip, 600),
+        restRecommendation: validateOptionalText(day.restRecommendation, 600),
       });
     }
 
@@ -327,10 +364,18 @@ export const createManualTrip = mutation({
   handler: async (ctx, args) => {
     const profile = await getOrCreateProfile(ctx);
 
-    if (!DURATION_OPTIONS.includes(args.duration as (typeof DURATION_OPTIONS)[number])) {
+    if (
+      !DURATION_OPTIONS.includes(
+        args.duration as (typeof DURATION_OPTIONS)[number]
+      )
+    ) {
       throw new ConvexError("Choose a supported trip duration.");
     }
-    if (!Number.isInteger(args.travellers) || args.travellers < 1 || args.travellers > 12) {
+    if (
+      !Number.isInteger(args.travellers) ||
+      args.travellers < 1 ||
+      args.travellers > 12
+    ) {
       throw new ConvexError("Choose 1–12 travellers.");
     }
 
@@ -368,21 +413,33 @@ export const createManualTrip = mutation({
     const stops = preferred.length > 0 ? preferred : allDestinations;
     const dailyCost = dailyEstimateForBudget(budgetTier);
 
-    const days = Array.from({ length: args.duration }, (_, i) => ({
-      destinationId:
+    const days = Array.from({ length: args.duration }, (_, i) => {
+      const stop =
         stops[
           Math.min(
             stops.length - 1,
             Math.floor((i * stops.length) / args.duration)
           )
-        ]._id,
-      title: `Day ${i + 1}: Make it your own`,
-      description:
-        "Add your morning, afternoon, and evening activities here. Check local transport and opening times before travelling.",
-      travelNote:
-        "Manual planning template. Transfer details have not been verified.",
-      estimatedCost: dailyCost,
-    }));
+        ];
+      const topRest = stop.restSpots?.[0];
+      return {
+        destinationId: stop._id,
+        title: `Day ${i + 1}: ${stop.name}`,
+        description:
+          "Add your morning, afternoon, and evening activities here. Check local transport and opening times before travelling.",
+        travelNote:
+          "Manual planning template. Transfer details have not been verified.",
+        estimatedCost: dailyCost,
+        transportMode: "Private Car / Train / Tuk-Tuk",
+        travelDuration: i === 0 ? `From ${startingPoint}` : "Regional transfer",
+        routeTip:
+          stop.gettingThere ||
+          `Allow comfortable travel time to reach ${stop.name}.`,
+        restRecommendation: topRest
+          ? `${topRest.name} (${topRest.type}, ${topRest.priceRange}) — ${topRest.note}`
+          : `Take a midday pause at a local guesthouse or shaded cafe near ${stop.name}.`,
+      };
+    });
 
     const startDate = Date.now();
     const endDate = startDate + args.duration * 24 * 60 * 60 * 1000;
@@ -461,6 +518,10 @@ export const updateTrip = mutation({
         ),
         travelNote: day.travelNote,
         estimatedCost: day.estimatedCost,
+        transportMode: day.transportMode,
+        travelDuration: day.travelDuration,
+        routeTip: day.routeTip,
+        restRecommendation: day.restRecommendation,
       }));
     }
 

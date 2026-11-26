@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
@@ -18,14 +17,11 @@ interface DestinationMapProps {
   name: string;
 }
 
-const markerIcon = L.icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
+const markerIcon = L.divIcon({
+  className: "",
+  html: `<div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:9999px;border:3px solid #fff;background:#087b45;color:#fff;font-weight:800;box-shadow:0 8px 18px rgba(3,29,56,0.32);">★</div>`,
+  iconSize: [40, 40],
+  iconAnchor: [20, 20],
 });
 
 function MapResizeHandler() {
@@ -55,29 +51,26 @@ export default function DestinationMap({
 
   if (!isMounted) {
     return (
-      <div className="h-[400px] w-full animate-pulse rounded-2xl bg-slate-800 flex items-center justify-center text-slate-400">
+      <div className="h-[400px] w-full animate-pulse rounded-2xl bg-[#e5efe9] flex items-center justify-center text-[#08233f]">
         Loading map...
       </div>
     );
   }
 
   return (
-    <div className="h-[400px] w-full overflow-hidden rounded-2xl border border-slate-700">
+    <div className="h-[400px] w-full overflow-hidden rounded-2xl border border-[#cde0d6] shadow-[0_12px_32px_-18px_rgba(3,29,56,0.35)]">
       <MapContainer
         center={[latitude, longitude]}
-        zoom={13}
+        zoom={12}
         scrollWheelZoom={false}
         className="h-full w-full"
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
         />
 
-        <Marker
-          position={[latitude, longitude]}
-          icon={markerIcon}
-        >
+        <Marker position={[latitude, longitude]} icon={markerIcon}>
           <Popup>{name}</Popup>
         </Marker>
 
