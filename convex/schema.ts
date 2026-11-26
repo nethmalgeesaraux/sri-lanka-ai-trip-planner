@@ -84,6 +84,38 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_profile", ["profileId"]),
 
+  // Trip budget tracker expenses
+  tripExpenses: defineTable({
+    profileId: v.id("profiles"),
+    tripId: v.id("trips"),
+    title: v.string(),
+    category: v.union(
+      v.literal("Stay"),
+      v.literal("Transport"),
+      v.literal("Food"),
+      v.literal("Activities"),
+      v.literal("Other")
+    ),
+    amount: v.number(),
+    dayNumber: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index("by_trip", ["tripId"])
+    .index("by_profile", ["profileId"]),
+
+  // Saved hidden gems discovered via AI
+  hiddenGems: defineTable({
+    profileId: v.id("profiles"),
+    name: v.string(),
+    region: v.string(),
+    category: v.string(),
+    whySpecial: v.string(),
+    howToReach: v.string(),
+    bestTime: v.string(),
+    restTip: v.string(),
+    createdAt: v.number(),
+  }).index("by_profile", ["profileId"]),
+
   // Day-by-day trip activities
   itineraries: defineTable({
     tripId: v.id("trips"),

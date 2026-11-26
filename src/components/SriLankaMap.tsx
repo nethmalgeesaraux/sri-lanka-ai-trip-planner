@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Map as LeafletMap, TileLayer } from "leaflet";
+import type { Map as LeafletMap, Marker, TileLayer } from "leaflet";
 import type { Place } from "@/lib/travel-types";
 
-type MapStyleKey = "explorer" | "satellite" | "street";
+type MapStyleKey = "street" | "satellite";
 
 const TILE_LAYERS: Record<
   MapStyleKey,
   { label: string; url: string; attribution: string }
 > = {
-  explorer: {
-    label: "Explorer",
-    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+  street: {
+    label: "Street",
+    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
   },
   satellite: {
     label: "Satellite",
@@ -22,15 +22,9 @@ const TILE_LAYERS: Record<
     attribution:
       "Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics",
   },
-  street: {
-    label: "Street",
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    attribution:
-      '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  },
 };
 
-function haversineKm(a: Place, b: Place): number {
+export function haversineKm(a: Place, b: Place): number {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const R = 6371;
   const dLat = toRad(b.latitude - a.latitude);
@@ -50,6 +44,17 @@ function pinHexForTag(tag: string): string {
   return "#087b45";
 }
 
+function createPinHtml(index: number, color: string, isSelected: boolean) {
+  return `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:44px;">
+    ${
+      isSelected
+        ? `<span style="position:absolute;inset:-5px;border-radius:9999px;background:${color};opacity:0.28;"></span>`
+        : ""
+    }
+    <span style="display:flex;align-items:center;justify-content:center;width:${isSelected ? "42px" : "36px"};height:${isSelected ? "42px" : "36px"};border-radius:9999px;border:3px solid #ffffff;background:${color};color:#ffffff;font-weight:800;font-size:13px;box-shadow:0 8px 18px rgba(3,29,56,0.34);transition:all 0.25s ease;">${index + 1}</span>
+  </div>`;
+}
+
 export default function SriLankaMap({
   places,
   selected,
@@ -66,9 +71,10 @@ export default function SriLankaMap({
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<LeafletMap | null>(null);
   const tileLayerRef = useRef<TileLayer | null>(null);
+  const markersRef = useRef<Map<string, { marker: Marker; index: number; tag: string }>>(new Map());
   const [failed, setFailed] = useState(false);
   const [readyKey, setReadyKey] = useState<string | null>(null);
-  const [mapStyle, setMapStyle] = useState<MapStyleKey>("explorer");
+  const [mapStyle, setMapStyle] = useState<MapStyleKey>("street");
 
   const key = places.map((p) => p.id).join(",");
   const currentKey = `${key}-${route}`;
@@ -78,7 +84,6 @@ export default function SriLankaMap({
     if (!route || places.length < 2) return 0;
     let total = 0;
     for (let i = 1; i < places.length; i++) {
-      // Road travel across Sri Lanka averages ~1.32x straight-line distance
       total += haversineKm(places[i - 1], places[i]) * 1.32;
     }
     return Math.round(total);
@@ -86,13 +91,15 @@ export default function SriLankaMap({
 
   useEffect(() => {
     let cancelled = false;
+    markersRef.current.clear();
+
     import("leaflet")
       .then((L) => {
         if (cancelled || !container.current) return;
         const instance = L.map(container.current, {
           scrollWheelZoom: false,
           minZoom: 6,
-          maxZoom: 17,
+          maxZoom: 18,
           maxBounds: [
             [5.2, 78.8],
             [10.3, 82.6],
@@ -173,14 +180,7 @@ export default function SriLankaMap({
           const marker = L.marker([place.latitude, place.longitude], {
             icon: L.divIcon({
               className: "",
-              html: `<div style="position:relative;display:flex;align-items:center;justify-content:center;width:44px;height:44px;">
-                ${
-                  isSelected
-                    ? `<span style="position:absolute;inset:-4px;border-radius:9999px;background:${pinColor};opacity:0.25;"></span>`
-                    : ""
-                }
-                <span style="display:flex;align-items:center;justify-content:center;width:${isSelected ? "40px" : "36px"};height:${isSelected ? "40px" : "36px"};border-radius:9999px;border:3px solid #ffffff;background:${pinColor};color:#ffffff;font-weight:800;font-size:13px;box-shadow:0 8px 18px rgba(3,29,56,0.32);transition:transform 0.2s;">${i + 1}</span>
-              </div>`,
+              html: createPinHtml(i, pinColor, isSelected),
               iconSize: [44, 44],
               iconAnchor: [22, 22],
             }),
@@ -191,6 +191,7 @@ export default function SriLankaMap({
             .bindPopup(popupNode);
 
           marker.on("click", () => onSelect?.(place.id));
+          markersRef.current.set(place.id, { marker, index: i, tag: place.tag });
         });
 
         if (places.length > 1) {
@@ -212,12 +213,13 @@ export default function SriLankaMap({
     return () => {
       cancelled = true;
       tileLayerRef.current = null;
+      markersRef.current.clear();
       map.current?.remove();
       map.current = null;
     };
-    // Rebuild when stops or selected ring changes
+    // Rebuild only when stops or route mode change so selecting a pin smoothly zooms via flyTo
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, route, selected]);
+  }, [key, route]);
 
   useEffect(() => {
     if (!map.current || !ready) return;
@@ -235,10 +237,30 @@ export default function SriLankaMap({
     });
   }, [mapStyle, ready]);
 
+  // Smooth zoom-in animation (flyTo) & marker highlight when clicking any place
   useEffect(() => {
+    if (!ready || !map.current) return;
+    import("leaflet").then((L) => {
+      markersRef.current.forEach(({ marker, index, tag }, placeId) => {
+        const isSelected = selected === placeId;
+        marker.setIcon(
+          L.divIcon({
+            className: "",
+            html: createPinHtml(index, pinHexForTag(tag), isSelected),
+            iconSize: [44, 44],
+            iconAnchor: [22, 22],
+          })
+        );
+        if (isSelected) {
+          marker.openPopup();
+        }
+      });
+    });
+
     const place = places.find((p) => p.id === selected);
-    if (place && ready) {
-      map.current?.flyTo([place.latitude, place.longitude], 10, {
+    if (place) {
+      map.current.flyTo([place.latitude, place.longitude], 11, {
+        duration: 1.05,
         animate: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
       });
     }
@@ -246,14 +268,13 @@ export default function SriLankaMap({
 
   return (
     <div className="relative z-0 overflow-hidden rounded-2xl border border-[#cde0d6] bg-[#e5efe9] shadow-[0_12px_36px_-18px_rgba(3,29,56,0.35)] [&_.leaflet-control-attribution]:text-[11px] [&_.leaflet-control-zoom_a]:!h-10 [&_.leaflet-control-zoom_a]:!w-10 [&_.leaflet-control-zoom_a]:!leading-[40px]">
-      {/* Map Style Switcher & Route Summary Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d4e4dc] bg-[#031d38] px-4 py-2.5 text-white">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-[#44d23c]" />
           <span className="font-semibold">
             {route
               ? `${places.length} Route Stops · ~${totalDistanceKm} km overland`
-              : `${places.length} Curated Destinations`}
+              : `${places.length} Curated Destinations · Click any pin to zoom`}
           </span>
         </div>
         <div
@@ -266,7 +287,7 @@ export default function SriLankaMap({
               key={styleKey}
               type="button"
               onClick={() => setMapStyle(styleKey)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+              className={`rounded-full px-3.5 py-1 text-xs font-semibold transition ${
                 mapStyle === styleKey
                   ? "bg-[#1bc75c] text-[#031d38]"
                   : "text-slate-200 hover:text-white"
@@ -300,7 +321,6 @@ export default function SriLankaMap({
         </p>
       )}
 
-      {/* Legend / Route Note */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#d4e4dc] bg-white px-4 py-2.5 text-xs text-slate-600">
         <div className="flex flex-wrap items-center gap-3">
           <span className="inline-flex items-center gap-1.5">

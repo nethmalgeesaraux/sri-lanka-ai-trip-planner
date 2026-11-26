@@ -1,33 +1,71 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { authClient } from "@/lib/auth-client";
+import { useDarkMode } from "@/lib/theme";
 import { mapDestinationToPlace } from "@/lib/travel-places";
 import type { Place, Traveller, TravelTrip as Trip } from "@/lib/travel-types";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import SriLankaMap from "./SriLankaMap";
+import SriLankaMap, { haversineKm } from "./SriLankaMap";
+import SupportChatWidget from "./SupportChatWidget";
+
+type WeatherPayload = {
+  temperatureC: number;
+  windKmh: number;
+  rainProbability: number;
+  condition: string;
+  alert: {
+    level: "good" | "caution" | "warning";
+    title: string;
+    advice: string;
+  };
+  forecast: Array<{
+    date: string;
+    maxC: number;
+    minC: number;
+    rainProb: number;
+    condition: string;
+  }>;
+};
+
+type HiddenGem = {
+  name: string;
+  region: string;
+  category: string;
+  whySpecial: string;
+  howToReach: string;
+  bestTime: string;
+  restTip: string;
+};
+
+const HUB_COORDS: Record<string, { latitude: number; longitude: number }> = {
+  Colombo: { latitude: 6.9271, longitude: 79.8612 },
+  Kandy: { latitude: 7.2906, longitude: 80.6337 },
+  Galle: { latitude: 6.0535, longitude: 80.221 },
+  Ella: { latitude: 6.8667, longitude: 81.0466 },
+};
 
 const faqs = [
   [
     "How does LankaTrails work?",
-    "Create an email/password account, choose your preferences, and Gemini drafts your itinerary with routes, transit tips, and places to rest. Generated trips are saved privately to your account so you can revisit and edit them later.",
+    "Create an email/password account, choose your preferences, and Gemini drafts your itinerary with routes, transit tips, and places to rest. Generated trips are saved privately to your account with Budget Tracker and Route Optimizer built in.",
   ],
   [
     "When is the best time to visit Sri Lanka?",
-    "Weather varies by region. The south and west are generally drier from December to March, while the east coast and ancient cities shine from May to September. Always check current forecasts before setting off.",
+    "Weather varies by region. The south and west are generally drier from December to March, while the east coast and ancient cities shine from May to September. Check live Weather Alerts right inside the app before travelling.",
   ],
   [
-    "Can I change my itinerary?",
-    "Yes. Rename your trip and edit each day’s title and activities, inspect the route map and rest stops, or generate a new itinerary from different preferences.",
+    "Can I optimize my route and track expenses?",
+    "Yes. Every trip includes a Route Optimizer (Leaflet + OpenStreetMap) to sort stops into the shortest overland path, and a Convex-backed Budget Tracker to log real LKR expenses across Stay, Transport, Food, and Activities.",
   ],
   [
-    "Are the budget estimates live prices?",
-    "No. They are illustrative planning estimates in LKR, not booking quotes. Prices vary by season, transport, accommodation, and activities. International flights are excluded.",
+    "What is the Hidden Gems Finder?",
+    "Powered by Gemini + Convex, Hidden Gems Finder discovers lesser-known waterfalls, quiet beaches, viewpoints, and local tea spots near any Sri Lankan region and lets you save them to your account.",
   ],
 ];
 
@@ -110,6 +148,73 @@ const seasonalGuides = [
   },
 ];
 
+const features = [
+  {
+    id: "planner",
+    icon: "spark",
+    title: "AI Smart Trip Planner",
+    copy: "Gemini + Convex",
+  },
+  {
+    id: "route",
+    icon: "route",
+    title: "Route Optimizer",
+    copy: "Leaflet + OpenStreetMap",
+  },
+  {
+    id: "weather",
+    icon: "sun",
+    title: "Weather Alerts",
+    copy: "Weather API",
+  },
+  {
+    id: "budget",
+    icon: "wallet",
+    title: "Budget Tracker",
+    copy: "Convex",
+  },
+  {
+    id: "gems",
+    icon: "leaf",
+    title: "Hidden Gems Finder",
+    copy: "Gemini + Convex",
+  },
+];
+
+function computeNearestNeighborOrder(
+  startHub: string,
+  items: Place[]
+): number[] {
+  if (items.length <= 1) return items.map((_, i) => i);
+  const hub = HUB_COORDS[startHub] || HUB_COORDS.Colombo;
+  const remaining = items.map((place, index) => ({ place, index }));
+  const order: number[] = [];
+  let currentLat = hub.latitude;
+  let currentLon = hub.longitude;
+
+  while (remaining.length > 0) {
+    let bestPos = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i].place;
+      const dist = haversineKm(
+        { ...candidate, latitude: currentLat, longitude: currentLon },
+        candidate
+      );
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestPos = i;
+      }
+    }
+    const [picked] = remaining.splice(bestPos, 1);
+    order.push(picked.index);
+    currentLat = picked.place.latitude;
+    currentLon = picked.place.longitude;
+  }
+
+  return order;
+}
+
 function PageIntro({
   eyebrow,
   title,
@@ -125,7 +230,7 @@ function PageIntro({
         className="absolute -right-16 -top-28 h-80 w-80 rounded-full border-[45px] border-[#164c4a]"
         aria-hidden="true"
       />
-      <div className="relative mx-auto max-w-6xl">
+      <div className="animate-lt-fade-up relative mx-auto max-w-6xl">
         <p className="text-xs font-bold tracking-[0.2em] text-[#b7e36a]">
           {eyebrow}
         </p>
@@ -148,46 +253,18 @@ function FaqList() {
           <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-5 py-4 text-base font-semibold focus-visible:ring-2 focus-visible:ring-green-600">
             {question}
             <span
-              className="text-2xl text-[#07834b] group-open:rotate-45"
+              className="text-2xl text-[#07834b] transition-transform group-open:rotate-45"
               aria-hidden="true"
             >
               +
             </span>
           </summary>
-          <p className="max-w-2xl pb-5 text-sm leading-7">{answer}</p>
+          <p className="max-w-2xl pb-5 text-sm leading-7 opacity-85">{answer}</p>
         </details>
       ))}
     </div>
   );
 }
-
-const features = [
-  {
-    icon: "spark",
-    title: "AI-Powered Planning",
-    copy: "Personalised trip inspiration",
-  },
-  {
-    icon: "pin",
-    title: "Interactive Map",
-    copy: "Explore the island your way",
-  },
-  {
-    icon: "calculator",
-    title: "Budget Calculator",
-    copy: "Plan within your budget",
-  },
-  {
-    icon: "shield",
-    title: "Thoughtfully Planned",
-    copy: "Routes & rest guidance",
-  },
-  {
-    icon: "save",
-    title: "Save Your Trips",
-    copy: "Private to your account",
-  },
-];
 
 function Icon({
   name = "arrow",
@@ -412,11 +489,13 @@ function Modal({
   title,
   onClose,
   wide = false,
+  dark = false,
   children,
 }: {
   title: string;
   onClose: () => void;
   wide?: boolean;
+  dark?: boolean;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -434,7 +513,11 @@ function Modal({
       }}
       aria-modal="true"
       aria-labelledby="dialog-title"
-      className={`fixed m-auto max-h-[88vh] w-[calc(100%-1.5rem)] ${wide ? "max-w-3xl" : "max-w-xl"} overflow-y-auto rounded-2xl bg-white p-6 text-[#08233f] shadow-2xl backdrop:bg-[#00162e]/75 md:p-7`}
+      className={`animate-lt-fade-up fixed m-auto max-h-[88vh] w-[calc(100%-1.5rem)] ${wide ? "max-w-3xl" : "max-w-xl"} overflow-y-auto rounded-2xl p-6 shadow-2xl backdrop:bg-[#00162e]/75 md:p-7 ${
+        dark
+          ? "border border-[#274766] bg-[#0e2238] text-white"
+          : "bg-white text-[#08233f]"
+      }`}
     >
       <div className="mb-5 flex items-center justify-between gap-4">
         <h2 id="dialog-title" className="text-2xl font-bold">
@@ -443,7 +526,11 @@ function Modal({
         <button
           aria-label="Close dialog"
           onClick={onClose}
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 hover:bg-slate-200 focus-visible:ring-2"
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full focus-visible:ring-2 ${
+            dark
+              ? "bg-[#1a3756] text-white hover:bg-[#23476e]"
+              : "bg-slate-100 text-[#08233f] hover:bg-slate-200"
+          }`}
         >
           <Icon name="close" />
         </button>
@@ -510,6 +597,8 @@ export default function TravelApp({
   initialPlaces?: Place[];
 }) {
   const router = useRouter();
+  const [dark, setDark] = useDarkMode();
+
   const destinations = useQuery(api.destinations.getAll);
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const { data: session, isPending: isSessionPending } =
@@ -529,26 +618,40 @@ export default function TravelApp({
   );
   const saved: Trip[] = savedTripsQuery ?? [];
 
+  const savedGemsQuery = useQuery(
+    api.hiddenGems.listMine,
+    isAuthenticated ? {} : "skip"
+  );
+  const savedGems = savedGemsQuery ?? [];
+
   const createManualTrip = useMutation(api.trips.createManualTrip);
   const updateTripMutation = useMutation(api.trips.updateTrip);
   const deleteTripMutation = useMutation(api.trips.deleteTrip);
+  const reorderTripDaysMutation = useMutation(api.trips.reorderTripDays);
   const submitContactMutation = useMutation(api.contact.submitMessage);
+  const saveGemMutation = useMutation(api.hiddenGems.saveGem);
+  const removeGemMutation = useMutation(api.hiddenGems.removeGem);
+  const addExpenseMutation = useMutation(api.budgets.addExpense);
+  const deleteExpenseMutation = useMutation(api.budgets.deleteExpense);
 
-  const places: Place[] = destinations
-    ? destinations.map(mapDestinationToPlace)
-    : initialPlaces;
+  const places: Place[] = useMemo(
+    () =>
+      destinations ? destinations.map(mapDestinationToPlace) : initialPlaces,
+    [destinations, initialPlaces]
+  );
 
-  const [dark, setDark] = useState(false);
   const [mobileMenu, setMobileMenu] = useState(false);
   const view = initialView;
   const [modal, setModal] = useState<string | null>(null);
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [itineraryTab, setItineraryTab] = useState<
-    "itinerary" | "route" | "rest"
+    "itinerary" | "route" | "rest" | "budget"
   >("itinerary");
   const [seasonTab, setSeasonTab] = useState("west-south");
+  const [heroSlideIndex, setHeroSlideIndex] = useState(0);
 
+  // Planner states
   const [style, setStyle] = useState("Adventure");
   const [duration, setDuration] = useState("3");
   const [budget, setBudget] = useState("All Budget");
@@ -566,9 +669,77 @@ export default function TravelApp({
   const [tripQuery, setTripQuery] = useState("");
   const [contactNotice, setContactNotice] = useState("");
 
+  // Weather Alerts state
+  const [weatherSlug, setWeatherSlug] = useState("ella");
+  const [weatherData, setWeatherData] = useState<WeatherPayload | null>(null);
+  const [weatherBusy, setWeatherBusy] = useState(false);
+  const [weatherError, setWeatherError] = useState("");
+
+  // Place Modal live weather
+  const [placeWeather, setPlaceWeather] = useState<WeatherPayload | null>(null);
+
+  // Hidden Gems Finder state
+  const [gemRegion, setGemRegion] = useState("Ella & Hill Country");
+  const [gemVibe, setGemVibe] = useState("Waterfalls & Nature");
+  const [discoveredGems, setDiscoveredGems] = useState<HiddenGem[]>([]);
+  const [gemBusy, setGemBusy] = useState(false);
+  const [gemNotice, setGemNotice] = useState("");
+
+  // Map Route Optimizer state
+  const [optimizerMode, setOptimizerMode] = useState(false);
+  const [optimizerHub, setOptimizerHub] = useState("Colombo");
+  const [optimizerStops, setOptimizerStops] = useState<string[]>([]);
+
+  // Budget Tracker form state
+  const [expenseTitle, setExpenseTitle] = useState("");
+  const [expenseCategory, setExpenseCategory] = useState<
+    "Stay" | "Transport" | "Food" | "Activities" | "Other"
+  >("Stay");
+  const [expenseAmount, setExpenseAmount] = useState("");
+  const [expenseDay, setExpenseDay] = useState("1");
+  const [budgetTripId, setBudgetTripId] = useState<string>("");
+
+  const activeBudgetTripId =
+    (modal === "Your Itinerary" && trip?.id) ||
+    budgetTripId ||
+    saved[0]?.id ||
+    "";
+
+  const tripExpensesQuery = useQuery(
+    api.budgets.listByTrip,
+    isAuthenticated && activeBudgetTripId
+      ? { tripId: activeBudgetTripId as Id<"trips"> }
+      : "skip"
+  );
+  const tripExpenses = tripExpensesQuery ?? [];
+
   const authReady = !isSessionPending && !isAuthLoading;
   const daily =
     budget === "Budget friendly" ? 6500 : budget === "Luxury" ? 35000 : 15000;
+
+  // Hero slideshow photos (cycle every 10 seconds)
+  const heroSlides = useMemo(() => {
+    const preferredSlugs = [
+      "ella",
+      "sigiriya-rock-fortress",
+      "mirissa-beach",
+      "galle-fort",
+      "temple-of-the-tooth",
+      "nuwara-eliya",
+    ];
+    const picked = preferredSlugs
+      .map((s) => places.find((p) => p.slug === s))
+      .filter((p): p is Place => Boolean(p && p.image));
+    return picked.length > 0 ? picked : places.filter((p) => p.image);
+  }, [places]);
+
+  useEffect(() => {
+    if (view !== "Home" || heroSlides.length <= 1) return;
+    const timer = window.setInterval(() => {
+      setHeroSlideIndex((prev) => (prev + 1) % heroSlides.length);
+    }, 10000);
+    return () => window.clearInterval(timer);
+  }, [view, heroSlides.length]);
 
   useEffect(() => {
     if (view === "Home" && window.location.hash === "#planner") {
@@ -578,13 +749,69 @@ export default function TravelApp({
     }
   }, [view]);
 
+  const activeHero =
+    heroSlides.length > 0
+      ? heroSlides[heroSlideIndex % heroSlides.length]
+      : places[0];
+
+  const activeModalPlace = places.find((p) => p.name === modal);
+
+  // Fetch live Weather Alert whenever Place Modal or Weather Modal target changes
+  useEffect(() => {
+    const target =
+      activeModalPlace ||
+      (modal === "Weather Alerts"
+        ? places.find((p) => p.slug === weatherSlug) || places[0]
+        : null);
+    if (!target) return;
+
+    let cancelled = false;
+    fetch(`/api/weather?lat=${target.latitude}&lon=${target.longitude}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (d.error) {
+          if (modal === "Weather Alerts") setWeatherError(d.error);
+          return;
+        }
+        if (activeModalPlace) setPlaceWeather(d);
+        if (modal === "Weather Alerts") {
+          setWeatherData(d);
+          setWeatherError("");
+        }
+      })
+      .catch(() => {
+        if (!cancelled && modal === "Weather Alerts") {
+          setWeatherError("Could not reach the Weather API.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled && modal === "Weather Alerts") setWeatherBusy(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeModalPlace, modal, weatherSlug, places]);
+
   function openPlaceModal(placeName: string) {
     setActivePhotoIndex(0);
     setLightboxOpen(false);
+    setPlaceWeather(null);
     setModal(placeName);
   }
 
-  function openTripModal(selectedTrip: Trip, tab: "itinerary" | "route" | "rest" = "itinerary") {
+  function openWeatherModal(slug?: string) {
+    setWeatherError("");
+    setWeatherBusy(true);
+    if (slug) setWeatherSlug(slug);
+    setModal("Weather Alerts");
+  }
+
+  function openTripModal(
+    selectedTrip: Trip,
+    tab: "itinerary" | "route" | "rest" | "budget" = "itinerary"
+  ) {
     setTrip(selectedTrip);
     setNotice("");
     setItineraryTab(tab);
@@ -612,6 +839,33 @@ export default function TravelApp({
       });
       setTrip(updated);
       setNotice("Changes saved to your account.");
+    } catch (error) {
+      setNotice((error as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function optimizeCurrentTripRoute() {
+    if (!trip) return;
+    const stopPlaces = trip.days
+      .map((d) => places.find((p) => p.id === d.destination))
+      .filter((p): p is Place => Boolean(p));
+    if (stopPlaces.length !== trip.days.length || stopPlaces.length < 2) return;
+
+    const orderIndices = computeNearestNeighborOrder(
+      trip.startingPoint,
+      stopPlaces
+    );
+    setBusy(true);
+    setNotice("");
+    try {
+      const updated = await reorderTripDaysMutation({
+        id: trip.id as Id<"trips">,
+        orderIndices,
+      });
+      setTrip(updated);
+      setNotice("Route optimized for shortest overland travel!");
     } catch (error) {
       setNotice((error as Error).message);
     } finally {
@@ -671,6 +925,30 @@ export default function TravelApp({
     }
   }
 
+  async function findHiddenGems() {
+    setGemBusy(true);
+    setGemNotice("");
+    try {
+      const res = await fetch("/api/travel/hidden-gems", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-lankatrails-client": "1",
+        },
+        body: JSON.stringify({ region: gemRegion, vibe: gemVibe }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Unable to discover hidden gems.");
+      }
+      setDiscoveredGems(data.gems || []);
+    } catch (error) {
+      setGemNotice((error as Error).message);
+    } finally {
+      setGemBusy(false);
+    }
+  }
+
   function openPlanner() {
     if (view !== "Home") {
       setMobileMenu(false);
@@ -702,7 +980,6 @@ export default function TravelApp({
     .filter(({ item }) =>
       item.title.toLowerCase().includes(tripQuery.toLowerCase())
     );
-  const activeModalPlace = places.find((p) => p.name === modal);
   const activeGalleryImages = activeModalPlace
     ? activeModalPlace.images.length > 0
       ? activeModalPlace.images
@@ -711,11 +988,39 @@ export default function TravelApp({
   const activeSeasonGuide =
     seasonalGuides.find((g) => g.id === seasonTab) || seasonalGuides[0];
 
+  const mapDisplayPlaces = useMemo(() => {
+    if (!optimizerMode || optimizerStops.length === 0) return places;
+    return optimizerStops
+      .map((id) => places.find((p) => p.id === id))
+      .filter((p): p is Place => Boolean(p));
+  }, [optimizerMode, optimizerStops, places]);
+
+  const cardSurface = dark
+    ? "border-[#234361] bg-[#122b45] text-white"
+    : "border-slate-200 bg-white text-[#08233f]";
+  const softBox = dark
+    ? "border-[#254869] bg-[#143352] text-slate-100"
+    : "border-[#dae8df] bg-[#f5faf7] text-[#08233f]";
+  const mutedText = dark ? "text-slate-300" : "text-slate-600";
+  const inputSurface = dark
+    ? "border-[#2a4e70] bg-[#122b45] text-white placeholder:text-slate-400"
+    : "border-slate-300 bg-white text-[#08233f]";
+
+  const activeBudgetTrip =
+    saved.find((t) => t.id === activeBudgetTripId) || trip || saved[0] || null;
+  const activeTargetBudget = activeBudgetTrip
+    ? activeBudgetTrip.days.reduce((sum, d) => sum + d.estimatedCost, 0) *
+      activeBudgetTrip.travellers
+    : daily * Number(duration);
+  const totalLoggedSpend = tripExpenses.reduce((sum, e) => sum + e.amount, 0);
+
   return (
     <div
-      className={`min-h-screen overflow-x-hidden font-sans ${dark ? "bg-[#102e4a] text-white" : "bg-[#fbfdff] text-[#08233f]"}`}
+      className={`min-h-screen overflow-x-hidden font-sans transition-colors duration-300 ${
+        dark ? "bg-[#0b1f33] text-white" : "bg-[#fbfdff] text-[#08233f]"
+      }`}
     >
-      <header className="relative z-20 bg-[#031d38] text-white">
+      <header className="relative z-20 bg-[#031d38] text-white shadow-sm">
         <div className="mx-auto flex min-h-[88px] max-w-[1600px] items-center justify-between gap-5 px-5 lg:px-[3%]">
           <Brand />
           <nav
@@ -738,16 +1043,20 @@ export default function TravelApp({
               onClick={() => setDark(!dark)}
               aria-label="Toggle dark theme"
               aria-pressed={dark}
-              className="flex min-h-11 items-center gap-2 rounded-full bg-[#1b3552] px-3 focus-visible:ring-2 focus-visible:ring-lime-300"
+              title={dark ? "Switch to Light Mode" : "Switch to Dark Mode"}
+              className="flex min-h-11 items-center gap-2 rounded-full bg-[#1b3552] px-3.5 text-xs font-semibold transition hover:bg-[#24456b] focus-visible:ring-2 focus-visible:ring-lime-300"
             >
               <Icon name={dark ? "sun" : "moon"} />
+              <span className="hidden md:inline">
+                {dark ? "Light" : "Dark"}
+              </span>
             </button>
             <button
               onClick={() => {
                 setNotice("");
                 setModal(user ? "Your Account" : "Sign In");
               }}
-              className="hidden min-h-11 max-w-44 items-center gap-3 rounded-full border border-slate-300 px-5 text-sm font-semibold sm:flex"
+              className="hidden min-h-11 max-w-44 items-center gap-3 rounded-full border border-slate-300 px-5 text-sm font-semibold transition hover:border-[#b7e36a] sm:flex"
             >
               <Icon name="user" />
               <span className="truncate">{user ? user.name : "Sign In"}</span>
@@ -765,7 +1074,7 @@ export default function TravelApp({
         {mobileMenu && (
           <nav
             aria-label="Mobile navigation"
-            className="grid border-t border-slate-600 px-6 pb-4 xl:hidden"
+            className="animate-lt-fade-in grid border-t border-slate-600 px-6 pb-4 xl:hidden"
           >
             {navigation.map((item) => (
               <button
@@ -793,27 +1102,38 @@ export default function TravelApp({
       {notice && !modal && (
         <p
           role="status"
-          className="border-b border-[#cce4d3] bg-[#edf8ef] px-6 py-4 text-center text-sm text-[#17472d]"
+          className="animate-lt-fade-in border-b border-[#cce4d3] bg-[#edf8ef] px-6 py-4 text-center text-sm text-[#17472d]"
         >
           {notice}
         </p>
       )}
 
-      <main>
+      <main className="animate-lt-fade-in">
         {view === "Home" && (
           <>
-            <section className="relative isolate bg-[#063e37]">
-              <Photo
-                id={hero?.image || ""}
-                alt="Nine Arch Bridge in Ella, Sri Lanka"
-                className="absolute inset-0 -z-20 h-full w-full object-cover object-center"
-              />
-              <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#002735]/95 via-[#002735]/55 to-[#001c20]/25" />
-              <div className="mx-auto grid max-w-[1600px] items-center gap-10 px-6 py-10 md:px-[4.3%] lg:min-h-[500px] lg:grid-cols-[1fr_410px] lg:gap-16 lg:py-10 xl:grid-cols-[1fr_440px]">
-                <div className="min-w-0 text-white">
+            {/* Hero with 10s Animated Slideshow */}
+            <section className="relative isolate overflow-hidden bg-[#063e37]">
+              <div
+                key={activeHero?.id || "hero-fallback"}
+                className="animate-lt-hero-zoom animate-lt-fade-in absolute inset-0 -z-20"
+              >
+                <Photo
+                  id={activeHero?.image || ""}
+                  alt={
+                    activeHero
+                      ? `${activeHero.name}, Sri Lanka`
+                      : "Sri Lanka landscape"
+                  }
+                  className="h-full w-full object-cover object-center"
+                />
+              </div>
+              <div className="absolute inset-0 -z-10 bg-gradient-to-r from-[#002735]/95 via-[#002735]/60 to-[#001c20]/25" />
+              <div className="mx-auto grid max-w-[1600px] items-center gap-10 px-6 py-10 md:px-[4.3%] lg:min-h-[520px] lg:grid-cols-[1fr_410px] lg:gap-16 lg:py-10 xl:grid-cols-[1fr_440px]">
+                <div className="animate-lt-fade-up min-w-0 text-white">
                   <span className="inline-flex items-center gap-2 rounded-full border border-[#1cb683]/60 bg-[#042e34] px-4 py-2 text-sm font-semibold text-[#daef79]">
                     <Icon name="pin" className="text-[#e5e02a]" />
-                    Explore Sri Lanka
+                    Explore Sri Lanka ·{" "}
+                    {activeHero ? activeHero.name : "Island Guide"}
                   </span>
                   <h1 className="mt-3 text-[42px] font-bold leading-[1.06] tracking-[-1.8px] md:text-[55px] xl:text-[62px]">
                     AI Trip Planner for
@@ -836,61 +1156,76 @@ export default function TravelApp({
                     </span>
                   </h1>
                   <p className="mt-5 max-w-[500px] text-base font-medium leading-6 md:text-lg">
-                    Discover authentic places, get Gemini-powered routes and
-                    rest recommendations, and save every journey to your
-                    account.
+                    AI smart trip planning, route optimization, live weather
+                    alerts, budget tracking, and hidden gems—built for Sri
+                    Lanka.
                   </p>
-                  <div className="mt-5 flex flex-wrap gap-4">
+                  <div className="mt-5 flex flex-wrap gap-3">
                     <button onClick={openPlanner} className={primary}>
                       <Icon name="spark" />
                       Plan Your Trip
                       <Icon />
                     </button>
                     <button
-                      onClick={() => navigate("Map")}
-                      className="inline-flex min-h-11 items-center gap-3 rounded-full border border-white bg-[#031d38]/40 px-5 py-3 text-sm font-semibold backdrop-blur-sm hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-lime-300"
+                      onClick={() => {
+                        setOptimizerMode(true);
+                        navigate("Map");
+                      }}
+                      className="inline-flex min-h-11 items-center gap-2.5 rounded-full border border-white bg-[#031d38]/40 px-5 py-3 text-sm font-semibold backdrop-blur-sm transition hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-lime-300"
                     >
-                      <Icon name="pin" />
-                      Explore Island Map
+                      <Icon name="route" />
+                      Route Optimizer
                     </button>
                     <button
-                      onClick={() => setModal("Explore Sri Lanka")}
-                      className="inline-flex min-h-11 items-center gap-2 px-3 py-3 text-sm font-semibold text-[#daef79] hover:underline focus-visible:ring-2 focus-visible:ring-lime-300"
+                      onClick={() => setModal("Hidden Gems Finder")}
+                      className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#b7e36a]/60 bg-[#042e34]/75 px-4 py-3 text-sm font-semibold text-[#daef79] transition hover:bg-[#042e34]"
                     >
-                      <Icon name="play" />
-                      How LankaTrails Works
+                      <Icon name="leaf" />
+                      Hidden Gems
                     </button>
                   </div>
-                  <div className="mt-6 flex flex-wrap items-center gap-6 text-sm text-white">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#81bfa0] bg-[#063c34] text-[#b7e36a]">
-                        <Icon name="shield" />
+
+                  {/* Hero 10s Slideshow Controls */}
+                  {heroSlides.length > 1 && (
+                    <div className="mt-6 flex flex-wrap items-center gap-2">
+                      {heroSlides.map((slide, idx) => (
+                        <button
+                          key={slide.id}
+                          type="button"
+                          aria-label={`Show ${slide.name} hero photo`}
+                          onClick={() => setHeroSlideIndex(idx)}
+                          className={`h-2 rounded-full transition-all ${
+                            idx === heroSlideIndex % heroSlides.length
+                              ? "w-8 bg-[#44d23c]"
+                              : "w-2.5 bg-white/45 hover:bg-white/80"
+                          }`}
+                        />
+                      ))}
+                      <span className="ml-2 text-xs text-slate-300">
+                        Auto-updates every 10s
                       </span>
-                      <div>
-                        <p className="font-semibold">
-                          Routes, stays & 50+ verified photos
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-300">
-                          Real places. Rest stops included. Your pace.
-                        </p>
-                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
+
                 <form
                   id="planner"
                   onSubmit={(e) => {
                     e.preventDefault();
                     void generateTrip();
                   }}
-                  className="relative min-w-0 scroll-mt-5 rounded-[20px] border border-white bg-white p-6 text-[#08233f] shadow-[0_15px_50px_#001e2d45] xl:p-7"
+                  className={`animate-lt-fade-up relative min-w-0 scroll-mt-5 rounded-[20px] border p-6 shadow-[0_15px_50px_#001e2d45] xl:p-7 ${
+                    dark
+                      ? "border-[#284b6b] bg-[#10263c] text-white"
+                      : "border-white bg-white text-[#08233f]"
+                  }`}
                 >
                   <span className="absolute -top-1 left-6 h-1 w-16 rounded-t bg-gradient-to-r from-[#16cb4b] to-[#bbec5f]" />
                   <h2 className="flex items-center gap-3 text-[22px] font-bold tracking-[-0.6px]">
                     <Icon name="spark" className="!h-7 !w-7 text-[#17b335]" />
                     Plan Your Dream Trip
                   </h2>
-                  <p className="mt-2 text-sm leading-6 text-[#344b65]">
+                  <p className={`mt-2 text-sm leading-6 ${mutedText}`}>
                     Tell us your preferences. Gemini builds your route, daily
                     activities & places to rest!
                   </p>
@@ -945,7 +1280,11 @@ export default function TravelApp({
                         className="min-w-0 text-sm font-semibold"
                       >
                         <span className="mb-2 block">{field.label}</span>
-                        <span className="flex min-h-12 items-center gap-2 rounded-lg border border-[#d7e1ea] px-3">
+                        <span
+                          className={`flex min-h-12 items-center gap-2 rounded-lg border px-3 ${
+                            dark ? "border-[#2a4e70] bg-[#14304b]" : "border-[#d7e1ea]"
+                          }`}
+                        >
                           <Icon
                             name={field.icon}
                             className={
@@ -955,7 +1294,9 @@ export default function TravelApp({
                           <select
                             value={field.value}
                             onChange={(e) => field.change(e.target.value)}
-                            className="min-h-11 w-full min-w-0 bg-transparent text-sm font-normal outline-none focus-visible:ring-2 focus-visible:ring-green-600"
+                            className={`min-h-11 w-full min-w-0 bg-transparent text-sm font-normal outline-none focus-visible:ring-2 focus-visible:ring-green-600 ${
+                              dark ? "[&>option]:bg-[#10263c] [&>option]:text-white" : ""
+                            }`}
                           >
                             {field.options.map((option) => (
                               <option key={option} value={option}>
@@ -969,8 +1310,10 @@ export default function TravelApp({
                       </label>
                     ))}
                   </div>
-                  <details className="mt-4 border-t border-slate-200 pt-2">
-                    <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-[#087947]">
+                  <details
+                    className={`mt-4 border-t pt-2 ${dark ? "border-[#244463]" : "border-slate-200"}`}
+                  >
+                    <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold text-[#1bc75c]">
                       Fine-tune my journey +
                     </summary>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -979,7 +1322,7 @@ export default function TravelApp({
                         <select
                           value={season}
                           onChange={(e) => setSeason(e.target.value)}
-                          className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm"
+                          className={`mt-2 min-h-11 w-full rounded-lg border px-2 text-sm ${inputSurface}`}
                         >
                           {[
                             "Flexible",
@@ -1000,7 +1343,7 @@ export default function TravelApp({
                           max="12"
                           value={travellers}
                           onChange={(e) => setTravellers(e.target.value)}
-                          className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"
+                          className={`mt-2 min-h-11 w-full rounded-lg border px-3 ${inputSurface}`}
                         />
                       </label>
                       <label className="text-sm sm:col-span-2">
@@ -1008,7 +1351,7 @@ export default function TravelApp({
                         <select
                           value={startingPoint}
                           onChange={(e) => setStartingPoint(e.target.value)}
-                          className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"
+                          className={`mt-2 min-h-11 w-full rounded-lg border px-3 ${inputSurface}`}
                         >
                           {["Colombo", "Kandy", "Galle", "Ella"].map(
                             (value) => (
@@ -1027,15 +1370,15 @@ export default function TravelApp({
                     {busy ? "Crafting Your Journey…" : "Generate My Trip"}
                     <Icon name="spark" />
                   </button>
-                  <p className="mt-4 flex items-center justify-center gap-2 text-xs text-[#425670]">
-                    <Icon name="spark" className="text-green-700" />
-                    Powered by Gemini · Sign in to generate & save
+                  <p className={`mt-4 flex items-center justify-center gap-2 text-xs ${mutedText}`}>
+                    <Icon name="spark" className="text-[#1bc75c]" />
+                    Powered by Gemini + Convex · Sign in to generate & save
                   </p>
                   <button
                     type="button"
                     disabled={busy || !authReady}
                     onClick={() => void generateTrip(true)}
-                    className="mt-2 min-h-11 w-full text-sm font-semibold text-[#087947] underline underline-offset-4"
+                    className="mt-2 min-h-11 w-full text-sm font-semibold text-[#1bc75c] underline underline-offset-4"
                   >
                     Or start an editable plan without AI
                   </button>
@@ -1044,9 +1387,9 @@ export default function TravelApp({
             </section>
 
             {/* Popular Destinations */}
-            <section className="mx-auto grid max-w-[1600px] gap-6 px-6 pb-6 pt-8 md:grid-cols-3 md:px-[4.3%] lg:grid-cols-[1.05fr_1fr_1fr_1fr]">
+            <section className="animate-lt-fade-up mx-auto grid max-w-[1600px] gap-6 px-6 pb-6 pt-8 md:grid-cols-3 md:px-[4.3%] lg:grid-cols-[1.05fr_1fr_1fr_1fr]">
               <div className="min-w-0 md:col-span-3 lg:col-span-1">
-                <p className="flex items-center gap-2 text-sm font-semibold text-[#078a39]">
+                <p className="flex items-center gap-2 text-sm font-semibold text-[#1bc75c]">
                   <span className="h-0.5 w-8 bg-[#14b74c]" />
                   Popular Destinations
                 </p>
@@ -1055,15 +1398,13 @@ export default function TravelApp({
                   <br />
                   Most Beautiful Places
                 </h2>
-                <p
-                  className={`mt-3 text-sm leading-5 ${dark ? "text-slate-300" : "text-[#344b65]"}`}
-                >
-                  Click any card to browse 5 authentic photos, route tips, and
-                  places to rest.
+                <p className={`mt-3 text-sm leading-5 ${mutedText}`}>
+                  Click any card to browse 5 authentic photos, live weather
+                  alerts, route tips, and places to rest.
                 </p>
                 <button
                   onClick={() => navigate("Destinations")}
-                  className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-[#078c49] px-5 text-sm font-semibold text-[#07834b] focus-visible:ring-2 focus-visible:ring-green-600"
+                  className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-[#078c49] px-5 text-sm font-semibold text-[#1bc75c] transition hover:bg-[#078c49]/10 focus-visible:ring-2 focus-visible:ring-green-600"
                 >
                   View All Destinations
                   <Icon className="!h-4 !w-4" />
@@ -1073,7 +1414,7 @@ export default function TravelApp({
                 <button
                   key={place.name}
                   onClick={() => openPlaceModal(place.name)}
-                  className="group relative isolate h-[215px] overflow-hidden rounded-2xl bg-[#1d5e47] text-left text-white focus-visible:ring-4 focus-visible:ring-green-500 xl:h-[220px]"
+                  className="group relative isolate h-[215px] overflow-hidden rounded-2xl bg-[#1d5e47] text-left text-white transition duration-300 hover:-translate-y-1 hover:shadow-xl focus-visible:ring-4 focus-visible:ring-green-500 xl:h-[220px]"
                 >
                   <Photo
                     id={place.image}
@@ -1104,37 +1445,47 @@ export default function TravelApp({
               ))}
             </section>
 
-            {/* Features Bar */}
+            {/* 5 Core Interactive Features Bar */}
             <section
-              aria-label="Planning features"
+              aria-label="Core LankaTrails features"
               className="mx-auto max-w-[1600px] px-5 md:px-[2.2%]"
             >
-              <div className="grid gap-5 rounded-xl bg-gradient-to-r from-[#e4f9ef] via-[#e0faf4] to-[#e4f9ef] px-7 py-6 text-[#08233f] sm:grid-cols-2 lg:grid-cols-5 lg:gap-0">
+              <div
+                className={`grid gap-5 rounded-xl px-7 py-6 sm:grid-cols-2 lg:grid-cols-5 lg:gap-0 ${
+                  dark
+                    ? "border border-[#244869] bg-[#122d47] text-white"
+                    : "bg-gradient-to-r from-[#e4f9ef] via-[#e0faf4] to-[#e4f9ef] text-[#08233f]"
+                }`}
+              >
                 {features.map((feature, i) => (
                   <button
-                    key={feature.title}
-                    onClick={() =>
-                      i === 4
-                        ? navigate("My Trips")
-                        : i === 1
-                          ? navigate("Map")
-                          : i === 2
-                            ? setModal("Budget Calculator")
-                            : i === 3
-                              ? setModal("Travel Guidance")
-                              : openPlanner()
-                    }
-                    className={`flex min-h-11 items-center gap-4 text-left focus-visible:ring-2 focus-visible:ring-green-600 lg:justify-center ${i !== 0 ? "lg:border-l lg:border-[#bde6d6]" : ""}`}
+                    key={feature.id}
+                    onClick={() => {
+                      if (feature.id === "planner") openPlanner();
+                      else if (feature.id === "route") {
+                        setOptimizerMode(true);
+                        navigate("Map");
+                      } else if (feature.id === "weather") openWeatherModal();
+                      else if (feature.id === "budget") setModal("Budget Tracker");
+                      else if (feature.id === "gems") setModal("Hidden Gems Finder");
+                    }}
+                    className={`group flex min-h-11 items-center gap-4 text-left transition hover:opacity-85 focus-visible:ring-2 focus-visible:ring-green-600 lg:justify-center ${
+                      i !== 0
+                        ? dark
+                          ? "lg:border-l lg:border-[#244869]"
+                          : "lg:border-l lg:border-[#bde6d6]"
+                        : ""
+                    }`}
                   >
                     <Icon
                       name={feature.icon}
-                      className="!h-8 !w-8 text-[#08a45b]"
+                      className="!h-8 !w-8 text-[#1bc75c] transition group-hover:scale-110"
                     />
                     <span>
                       <span className="block text-sm font-bold">
                         {feature.title}
                       </span>
-                      <span className="mt-1 block text-sm text-[#344b65]">
+                      <span className={`mt-1 block text-xs font-semibold ${mutedText}`}>
                         {feature.copy}
                       </span>
                     </span>
@@ -1146,7 +1497,7 @@ export default function TravelApp({
             {/* How It Works */}
             <section className="mx-auto grid max-w-[1600px] items-center gap-8 px-6 py-10 md:px-[4.3%] lg:grid-cols-[1fr_2fr]">
               <div>
-                <p className="text-sm font-semibold text-[#078b3b]">
+                <p className="text-sm font-semibold text-[#1bc75c]">
                   — How It Works
                 </p>
                 <h2 className="mt-1 text-[23px] font-bold tracking-[-0.7px]">
@@ -1157,10 +1508,13 @@ export default function TravelApp({
                 {[
                   ["Tell Us Your Preferences", "Travel style, duration, budget"],
                   [
-                    "Let Gemini Plan",
-                    "Daily stops, routes & rest spots for you",
+                    "Let Gemini Plan & Optimize",
+                    "Daily stops, optimized routes & rest spots",
                   ],
-                  ["Explore Sri Lanka", "View routes, save, edit & travel"],
+                  [
+                    "Track Weather & Budget",
+                    "Weather alerts, LKR expense tracker & hidden gems",
+                  ],
                 ].map(([title, copy], i) => (
                   <div key={title} className="flex items-start gap-3">
                     <span
@@ -1170,9 +1524,7 @@ export default function TravelApp({
                     </span>
                     <div>
                       <h3 className="text-sm font-bold">{title}</h3>
-                      <p
-                        className={`mt-1 text-sm leading-5 ${dark ? "text-slate-300" : "text-[#344b65]"}`}
-                      >
+                      <p className={`mt-1 text-sm leading-5 ${mutedText}`}>
                         {copy}
                       </p>
                     </div>
@@ -1185,20 +1537,29 @@ export default function TravelApp({
             <section className="mx-auto max-w-6xl px-6 py-12">
               <div className="flex flex-wrap items-end justify-between gap-5">
                 <div>
-                  <p className="text-xs font-bold tracking-[0.18em] text-[#087947]">
+                  <p className="text-xs font-bold tracking-[0.18em] text-[#1bc75c]">
                     CURATED ROUTE INSPIRATION
                   </p>
                   <h2 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
                     Ready-to-customize Sri Lanka routes
                   </h2>
                 </div>
-                <button
-                  onClick={() => navigate("My Trips")}
-                  className="flex min-h-11 items-center gap-2 text-sm font-bold text-[#087947]"
-                >
-                  Open My Saved Trips
-                  <Icon />
-                </button>
+                <div className="flex flex-wrap gap-4">
+                  <button
+                    onClick={() => openWeatherModal()}
+                    className="flex min-h-11 items-center gap-2 text-sm font-bold text-[#1bc75c]"
+                  >
+                    Live Weather Alerts
+                    <Icon name="sun" className="!h-4 !w-4" />
+                  </button>
+                  <button
+                    onClick={() => navigate("My Trips")}
+                    className="flex min-h-11 items-center gap-2 text-sm font-bold text-[#1bc75c]"
+                  >
+                    Open My Saved Trips
+                    <Icon />
+                  </button>
+                </div>
               </div>
               <div className="mt-8 grid gap-6 md:grid-cols-3">
                 {curatedRoutes.map((routeCard) => {
@@ -1208,7 +1569,7 @@ export default function TravelApp({
                   return (
                     <article
                       key={routeCard.title}
-                      className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-[#08233f] shadow-sm"
+                      className={`flex flex-col overflow-hidden rounded-2xl border shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg ${cardSurface}`}
                     >
                       <div className="relative">
                         <Photo
@@ -1222,21 +1583,21 @@ export default function TravelApp({
                       </div>
                       <div className="flex flex-1 flex-col p-6">
                         <h3 className="text-xl font-bold">{routeCard.title}</h3>
-                        <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#087947]">
+                        <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#1bc75c]">
                           {routeCard.stops.join(" → ")}
                         </p>
-                        <div className="mt-4 space-y-2.5 text-sm text-slate-600">
+                        <div className={`mt-4 space-y-2.5 text-sm ${mutedText}`}>
                           <p className="flex items-start gap-2">
                             <Icon
                               name="route"
-                              className="mt-0.5 !h-4 !w-4 text-[#087947]"
+                              className="mt-0.5 !h-4 !w-4 text-[#1bc75c]"
                             />
                             <span>{routeCard.transportHighlight}</span>
                           </p>
                           <p className="flex items-start gap-2">
                             <Icon
                               name="bed"
-                              className="mt-0.5 !h-4 !w-4 text-[#087947]"
+                              className="mt-0.5 !h-4 !w-4 text-[#1bc75c]"
                             />
                             <span>{routeCard.restHighlight}</span>
                           </p>
@@ -1252,7 +1613,7 @@ export default function TravelApp({
                             setStartingPoint(routeCard.startingPoint);
                             openPlanner();
                           }}
-                          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#087947] px-4 text-sm font-bold text-[#087947] transition hover:bg-[#edf8f3]"
+                          className="mt-5 inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#087947] px-4 text-sm font-bold text-[#1bc75c] transition hover:bg-[#087947]/10"
                         >
                           Load Route into Planner
                           <Icon name="spark" className="!h-4 !w-4" />
@@ -1265,11 +1626,17 @@ export default function TravelApp({
             </section>
 
             {/* Go Beyond the Ordinary */}
-            <section className="border-y border-[#c8e4dd] bg-[#edf8f3] px-6 py-16 text-[#08233f] md:py-20">
+            <section
+              className={`border-y px-6 py-16 md:py-20 ${
+                dark
+                  ? "border-[#21415f] bg-[#0e263d] text-white"
+                  : "border-[#c8e4dd] bg-[#edf8f3] text-[#08233f]"
+              }`}
+            >
               <div className="mx-auto max-w-6xl">
                 <div className="flex flex-wrap items-end justify-between gap-5">
                   <div>
-                    <p className="text-xs font-bold tracking-[0.18em] text-[#087947]">
+                    <p className="text-xs font-bold tracking-[0.18em] text-[#1bc75c]">
                       GO BEYOND THE ORDINARY
                     </p>
                     <h2 className="mt-3 text-3xl font-bold tracking-tight md:text-4xl">
@@ -1277,10 +1644,10 @@ export default function TravelApp({
                     </h2>
                   </div>
                   <button
-                    className="flex min-h-11 items-center gap-3 text-sm font-bold text-[#087947]"
-                    onClick={() => navigate("Destinations")}
+                    className="flex min-h-11 items-center gap-3 text-sm font-bold text-[#1bc75c]"
+                    onClick={() => setModal("Hidden Gems Finder")}
                   >
-                    Find your next adventure
+                    Discover Hidden Gems
                     <Icon />
                   </button>
                 </div>
@@ -1313,7 +1680,7 @@ export default function TravelApp({
                   ].map((item) => (
                     <article
                       key={item.title}
-                      className="overflow-hidden rounded-2xl border border-[#dbe9e1] bg-white shadow-[0_8px_30px_-20px_#163e44]"
+                      className={`overflow-hidden rounded-2xl border shadow-[0_8px_30px_-20px_#163e44] transition duration-300 hover:-translate-y-1 ${cardSurface}`}
                     >
                       <div className="relative">
                         <Photo
@@ -1327,7 +1694,7 @@ export default function TravelApp({
                       </div>
                       <div className="p-6">
                         <h3 className="text-xl font-bold">{item.title}</h3>
-                        <p className="mt-3 text-sm leading-7 text-slate-600">
+                        <p className={`mt-3 text-sm leading-7 ${mutedText}`}>
                           {item.text}
                         </p>
                         <button
@@ -1335,7 +1702,7 @@ export default function TravelApp({
                             setInterests(item.interest);
                             openPlanner();
                           }}
-                          className="mt-4 flex min-h-11 items-center gap-3 text-sm font-bold text-[#087947]"
+                          className="mt-4 flex min-h-11 items-center gap-3 text-sm font-bold text-[#1bc75c]"
                         >
                           Make it my trip
                           <Icon />
@@ -1347,12 +1714,21 @@ export default function TravelApp({
               </div>
             </section>
 
-            {/* Seasonal Monsoon & Travel Essentials Guide */}
+            {/* Seasonal Monsoon & Weather Alerts Guide */}
             <section className="mx-auto max-w-6xl px-6 py-16">
-              <div className="rounded-3xl border border-[#d6e7dd] bg-[#082b40] p-7 text-white md:p-10">
-                <p className="text-xs font-bold tracking-[0.2em] text-[#b7e36a]">
-                  SEASONAL ISLAND ADVISOR
-                </p>
+              <div className="rounded-3xl border border-[#234866] bg-[#082b40] p-7 text-white md:p-10">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-xs font-bold tracking-[0.2em] text-[#b7e36a]">
+                    SEASONAL ISLAND ADVISOR & WEATHER ALERTS
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => openWeatherModal()}
+                    className="rounded-full bg-[#1bc75c] px-4 py-1.5 text-xs font-bold text-[#031d38] transition hover:brightness-110"
+                  >
+                    Check Live Weather API →
+                  </button>
+                </div>
                 <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
                   <h2 className="text-2xl font-bold md:text-3xl">
                     Where the weather shines, month by month
@@ -1393,7 +1769,7 @@ export default function TravelApp({
                       <button
                         key={place.id}
                         onClick={() => openPlaceModal(place.name)}
-                        className="group overflow-hidden rounded-xl border border-white/15 bg-[#0d354e] text-left transition hover:border-[#44d23c]"
+                        className="group overflow-hidden rounded-xl border border-white/15 bg-[#0d354e] text-left transition duration-300 hover:-translate-y-1 hover:border-[#44d23c]"
                       >
                         <Photo
                           id={place.image}
@@ -1410,31 +1786,6 @@ export default function TravelApp({
                         </div>
                       </button>
                     ))}
-                </div>
-                <div className="mt-7 grid gap-4 border-t border-white/15 pt-6 sm:grid-cols-3">
-                  {[
-                    [
-                      "Scenic Rail & Highways",
-                      "Book Kandy–Ella observation seats early; Southern Expressway cuts Galle travel to 2 hours.",
-                    ],
-                    [
-                      "Where to Rest Comfortably",
-                      "Mix lakeside eco-lodges, tea-estate bungalows, and shaded midday cafe breaks to pace your days.",
-                    ],
-                    [
-                      "Sacred Sites & Cash",
-                      "Carry LKR cash for tuk-tuks & stupas, and pack modest shoulder/knee cover for temples.",
-                    ],
-                  ].map(([title, desc]) => (
-                    <div key={title} className="rounded-xl bg-[#0d354e] p-4">
-                      <p className="text-sm font-bold text-[#b7e36a]">
-                        {title}
-                      </p>
-                      <p className="mt-1.5 text-xs leading-5 text-slate-300">
-                        {desc}
-                      </p>
-                    </div>
-                  ))}
                 </div>
               </div>
             </section>
@@ -1504,10 +1855,10 @@ export default function TravelApp({
             <PageIntro
               eyebrow="A SMALL ISLAND. ENDLESS POSSIBILITIES."
               title="Find your kind of paradise."
-              description="Click any destination to explore 5 verified photos, how to get there, and recommended places to rest."
+              description="Click any destination to explore 5 verified photos, live weather alerts, how to get there, and recommended places to rest."
             />
             <section className="mx-auto min-h-[55vh] max-w-6xl px-6 py-10">
-              <div className="flex flex-wrap items-center justify-between gap-5">
+              <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex flex-wrap gap-2">
                   {["All", "Heritage", "Nature", "Beach", "Wildlife"].map(
                     (tag) => (
@@ -1515,20 +1866,29 @@ export default function TravelApp({
                         key={tag}
                         aria-pressed={filter === tag}
                         onClick={() => setFilter(tag)}
-                        className={`min-h-11 rounded-full border px-5 text-sm font-semibold ${filter === tag ? "border-green-700 bg-green-700 text-white" : "border-slate-500"}`}
+                        className={`min-h-11 rounded-full border px-5 text-sm font-semibold transition ${filter === tag ? "border-green-700 bg-green-700 text-white" : "border-slate-500"}`}
                       >
                         {tag}
                       </button>
                     )
                   )}
                 </div>
-                <input
-                  aria-label="Search destinations"
-                  placeholder="Search your next escape…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="min-h-12 w-full rounded-full border border-slate-300 bg-white px-5 text-sm text-[#08233f] outline-none focus:ring-2 focus:ring-green-600 md:w-72"
-                />
+                <div className="flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setModal("Hidden Gems Finder")}
+                    className="min-h-11 rounded-full border border-[#087947] px-4 text-sm font-bold text-[#1bc75c] transition hover:bg-[#087947]/10"
+                  >
+                    ✨ Hidden Gems Finder
+                  </button>
+                  <input
+                    aria-label="Search destinations"
+                    placeholder="Search your next escape…"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className={`min-h-12 w-full rounded-full border px-5 text-sm outline-none focus:ring-2 focus:ring-green-600 md:w-72 ${inputSurface}`}
+                  />
+                </div>
               </div>
               <p role="status" className="my-6 text-sm">
                 {shown.length} places to discover · Click a card to inspect 5
@@ -1539,7 +1899,7 @@ export default function TravelApp({
                   <button
                     key={place.name}
                     onClick={() => openPlaceModal(place.name)}
-                    className="group overflow-hidden rounded-2xl border border-slate-200 bg-white text-left text-[#08233f] shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-green-600"
+                    className={`animate-lt-fade-up group overflow-hidden rounded-2xl border text-left shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-lg focus-visible:ring-2 focus-visible:ring-green-600 ${cardSurface}`}
                   >
                     <div className="relative overflow-hidden">
                       <Photo
@@ -1558,14 +1918,16 @@ export default function TravelApp({
                       </span>
                     </div>
                     <div className="p-6">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-green-800">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[#1bc75c]">
                         {place.subtitle}
                       </p>
                       <h2 className="mt-2 text-2xl font-bold">{place.name}</h2>
-                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                      <p className={`mt-3 text-sm leading-6 ${mutedText}`}>
                         {place.detail}
                       </p>
-                      <span className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 text-sm font-bold text-[#087947]">
+                      <span
+                        className={`mt-5 flex items-center justify-between border-t pt-4 text-sm font-bold text-[#1bc75c] ${dark ? "border-[#244463]" : "border-slate-100"}`}
+                      >
                         Explore {place.name} (5 Photos)
                         <Icon />
                       </span>
@@ -1599,55 +1961,175 @@ export default function TravelApp({
         {view === "Map" && (
           <>
             <PageIntro
-              eyebrow="SEE THE ISLAND DIFFERENTLY"
+              eyebrow="LEAFLET + OPENSTREETMAP ROUTE OPTIMIZER"
               title="A little pin. A whole new possibility."
-              description="Switch between Explorer, Satellite, and Street layers. Click any destination pin or list card to preview photos and plan your route."
+              description="Click any pin or list card for a smooth zoom-in animation, switch between Street & Satellite maps, or enable Route Optimizer to compute the shortest overland path."
             />
             <section className="mx-auto max-w-7xl px-6 py-10">
               <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-                <h2 className="text-2xl font-bold">Explore Sri Lanka</h2>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h2 className="text-2xl font-bold">Explore Sri Lanka</h2>
+                  <button
+                    type="button"
+                    onClick={() => setOptimizerMode(!optimizerMode)}
+                    className={`min-h-10 rounded-full border px-4 text-xs font-bold transition ${
+                      optimizerMode
+                        ? "border-[#1bc75c] bg-[#1bc75c] text-[#031d38]"
+                        : "border-[#087947] text-[#1bc75c] hover:bg-[#087947]/10"
+                    }`}
+                  >
+                    {optimizerMode
+                      ? "✓ Route Optimizer Active"
+                      : "Enable Route Optimizer"}
+                  </button>
+                </div>
                 <button onClick={openPlanner} className={primary}>
-                  Plan a Route
+                  Plan AI Trip
                   <Icon name="spark" />
                 </button>
               </div>
+
+              {optimizerMode && (
+                <div className={`animate-lt-fade-up mb-6 rounded-2xl border p-5 ${softBox}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-base font-bold">
+                        Interactive Route Optimizer (Leaflet + OpenStreetMap)
+                      </h3>
+                      <p className={`mt-1 text-xs ${mutedText}`}>
+                        Pick destinations below (or select all), choose a
+                        starting hub, and optimize the shortest overland loop.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        aria-label="Starting hub"
+                        value={optimizerHub}
+                        onChange={(e) => setOptimizerHub(e.target.value)}
+                        className={`min-h-10 rounded-full border px-3 text-xs font-semibold ${inputSurface}`}
+                      >
+                        {["Colombo", "Kandy", "Galle", "Ella"].map((hub) => (
+                          <option key={hub} value={hub}>
+                            Start: {hub}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targets =
+                            optimizerStops.length >= 2
+                              ? mapDisplayPlaces
+                              : places.slice(0, 5);
+                          const order = computeNearestNeighborOrder(
+                            optimizerHub,
+                            targets
+                          );
+                          setOptimizerStops(order.map((i) => targets[i].id));
+                        }}
+                        className="min-h-10 rounded-full bg-[#087b35] px-4 text-xs font-bold text-white hover:brightness-110"
+                      >
+                        Optimize Stop Order
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setOptimizerStops([])}
+                        className="min-h-10 rounded-full border border-slate-400 px-3 text-xs font-semibold"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                  </div>
+                  {optimizerStops.length > 0 && (
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-black/10 pt-3">
+                      <p className="text-xs font-semibold">
+                        Optimized Order:{" "}
+                        <span className="text-[#1bc75c]">
+                          {optimizerHub} →{" "}
+                          {mapDisplayPlaces.map((p) => p.name).join(" → ")}
+                        </span>
+                      </p>
+                      <a
+                        href={buildGoogleMapsRouteUrl(
+                          optimizerHub,
+                          mapDisplayPlaces
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full bg-[#031d38] px-3.5 py-1.5 text-xs font-bold text-white"
+                      >
+                        Open Route in Google Maps →
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid items-start gap-6 lg:grid-cols-[330px_1fr]">
                 <div className="max-h-[620px] space-y-3 overflow-y-auto pr-1">
-                  {places.map((place, i) => (
-                    <button
-                      key={place.id}
-                      aria-pressed={selectedPlace === place.id}
-                      onClick={() => setSelectedPlace(place.id)}
-                      className={`flex min-h-20 w-full items-center gap-3.5 rounded-xl border p-3 text-left text-[#08233f] transition focus-visible:ring-2 focus-visible:ring-green-600 ${selectedPlace === place.id ? "border-green-600 bg-green-50 shadow-sm" : "border-slate-200 bg-white hover:border-green-400"}`}
-                    >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e5f7ec] text-sm font-bold text-green-800">
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <span className="block truncate text-base font-bold">
-                          {place.name}
-                        </span>
-                        <span className="mt-0.5 block truncate text-xs text-slate-600">
-                          {place.subtitle}
-                        </span>
-                      </div>
-                      <span
-                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${place.color}`}
+                  {places.map((place, i) => {
+                    const isPicked = optimizerStops.includes(place.id);
+                    const isActive = selectedPlace === place.id;
+                    return (
+                      <button
+                        key={place.id}
+                        aria-pressed={isActive}
+                        onClick={() => {
+                          setSelectedPlace(place.id);
+                          if (optimizerMode) {
+                            setOptimizerStops((prev) =>
+                              prev.includes(place.id)
+                                ? prev.filter((id) => id !== place.id)
+                                : [...prev, place.id]
+                            );
+                          }
+                        }}
+                        className={`flex min-h-20 w-full items-center gap-3.5 rounded-xl border p-3 text-left transition focus-visible:ring-2 focus-visible:ring-green-600 ${
+                          isActive
+                            ? "border-[#1bc75c] bg-[#e5f7ec] text-[#08233f] shadow-sm"
+                            : isPicked
+                              ? "border-[#087947] bg-[#effaf3] text-[#08233f]"
+                              : `${cardSurface} hover:border-[#1bc75c]`
+                        }`}
                       >
-                        {place.tag}
-                      </span>
-                    </button>
-                  ))}
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#e5f7ec] text-sm font-bold text-green-800">
+                          {optimizerMode && isPicked
+                            ? optimizerStops.indexOf(place.id) + 1
+                            : i + 1}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <span className="block truncate text-base font-bold">
+                            {place.name}
+                          </span>
+                          <span
+                            className={`mt-0.5 block truncate text-xs ${
+                              isActive || isPicked ? "text-slate-600" : mutedText
+                            }`}
+                          >
+                            {place.subtitle}
+                          </span>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${place.color}`}
+                        >
+                          {optimizerMode && isPicked ? "In Route" : place.tag}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
                 <div className="min-w-0">
                   <SriLankaMap
-                    places={places}
+                    places={mapDisplayPlaces}
                     selected={selectedPlace}
+                    route={optimizerMode && mapDisplayPlaces.length > 1}
                     onSelect={setSelectedPlace}
                     heightClass="h-[460px] md:h-[540px]"
                   />
                   {selectedPlace && (
-                    <div className="mt-4 flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-[#08233f] shadow-sm sm:flex-row sm:items-center">
+                    <div
+                      className={`animate-lt-fade-up mt-4 flex flex-col gap-4 rounded-2xl border p-5 shadow-sm sm:flex-row sm:items-center ${cardSurface}`}
+                    >
                       <Photo
                         id={
                           places.find((p) => p.id === selectedPlace)?.image ||
@@ -1662,7 +2144,7 @@ export default function TravelApp({
                         <h3 className="text-lg font-bold">
                           {places.find((p) => p.id === selectedPlace)?.name}
                         </h3>
-                        <p className="mt-1.5 text-sm leading-6 text-slate-600">
+                        <p className={`mt-1.5 text-sm leading-6 ${mutedText}`}>
                           {places.find((p) => p.id === selectedPlace)?.detail}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-3">
@@ -1677,6 +2159,17 @@ export default function TravelApp({
                           >
                             View 5 Photos & Rest Spots
                             <Icon name="camera" className="!h-4 !w-4" />
+                          </button>
+                          <button
+                            onClick={() =>
+                              openWeatherModal(
+                                places.find((p) => p.id === selectedPlace)?.slug
+                              )
+                            }
+                            className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#eef5fb] px-4 text-sm font-bold text-[#0c4a6e]"
+                          >
+                            Weather Alert
+                            <Icon name="sun" className="!h-4 !w-4" />
                           </button>
                         </div>
                       </div>
@@ -1693,7 +2186,7 @@ export default function TravelApp({
             <PageIntro
               eyebrow="YOUR PERSONAL COLLECTION"
               title="Good adventures are worth keeping."
-              description="Click any saved trip to inspect your route map, travel transfers, places to rest, and editable day-by-day plan."
+              description="Click any saved trip to inspect your route optimizer, live weather alerts, places to rest, and Convex Budget Tracker."
             />
             <section className="mx-auto min-h-[50vh] max-w-6xl px-6 py-10">
               <div className="flex flex-wrap items-center justify-between gap-5">
@@ -1706,17 +2199,25 @@ export default function TravelApp({
                   </h2>
                   <p className="mt-2 text-sm">
                     {user
-                      ? "Privately saved to your account · Click any trip to see routes & rest spots"
+                      ? "Privately saved in Convex · Click any trip for routes, rest spots & budget tracking"
                       : "Sign in to access your private trip collection"}
                   </p>
                 </div>
-                <button
-                  onClick={user ? openPlanner : () => setModal("Sign In")}
-                  className={primary}
-                >
-                  {user ? "Create New Trip" : "Sign In to Your Account"}
-                  <Icon name={user ? "spark" : "user"} />
-                </button>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={() => setModal("Hidden Gems Finder")}
+                    className="min-h-11 rounded-full border border-[#087947] px-4 text-sm font-bold text-[#1bc75c]"
+                  >
+                    Hidden Gems ({savedGems.length})
+                  </button>
+                  <button
+                    onClick={user ? openPlanner : () => setModal("Sign In")}
+                    className={primary}
+                  >
+                    {user ? "Create New Trip" : "Sign In to Your Account"}
+                    <Icon name={user ? "spark" : "user"} />
+                  </button>
+                </div>
               </div>
               {saved.length > 0 && (
                 <input
@@ -1724,18 +2225,26 @@ export default function TravelApp({
                   placeholder="Search your trips…"
                   value={tripQuery}
                   onChange={(e) => setTripQuery(e.target.value)}
-                  className="mt-7 min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm text-[#08233f] focus:ring-2 focus:ring-green-600"
+                  className={`mt-7 min-h-12 w-full rounded-xl border px-4 text-sm focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                 />
               )}
               {saved.length === 0 ? (
-                <div className="my-10 rounded-2xl border border-dashed border-[#b6d9c8] bg-[#eff8f3] px-6 py-16 text-center text-[#08233f]">
+                <div
+                  className={`my-10 rounded-2xl border border-dashed px-6 py-16 text-center ${
+                    dark
+                      ? "border-[#2a4f70] bg-[#122b45] text-white"
+                      : "border-[#b6d9c8] bg-[#eff8f3] text-[#08233f]"
+                  }`}
+                >
                   <span className="inline-flex rounded-full bg-white p-5">
                     <Icon name="bag" className="!h-9 !w-9 text-green-700" />
                   </span>
                   <h2 className="mt-5 text-2xl font-bold">
                     Your travel stories belong here.
                   </h2>
-                  <p className="mx-auto mb-6 mt-3 max-w-md text-sm leading-7 text-slate-600">
+                  <p
+                    className={`mx-auto mb-6 mt-3 max-w-md text-sm leading-7 ${mutedText}`}
+                  >
                     From a weekend by the ocean to a journey through the hills,
                     create your first itinerary and keep it here.
                   </p>
@@ -1749,7 +2258,7 @@ export default function TravelApp({
                   {matchingTrips.map(({ item, index }) => (
                     <article
                       key={item.id || index}
-                      className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-[#08233f] shadow-sm transition hover:shadow-md"
+                      className={`animate-lt-fade-up flex flex-col overflow-hidden rounded-2xl border shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-md ${cardSurface}`}
                     >
                       <button
                         type="button"
@@ -1773,33 +2282,44 @@ export default function TravelApp({
                           <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-800">
                             {item.duration} days · {item.style}
                           </span>
-                          <span className="text-xs font-semibold text-slate-500">
+                          <span className={`text-xs font-semibold ${mutedText}`}>
                             From {item.startingPoint}
                           </span>
                         </div>
                         <h2 className="mt-3 text-xl font-bold">{item.title}</h2>
-                        <p className="mt-1.5 text-sm text-slate-600">
+                        <p className={`mt-1.5 text-sm ${mutedText}`}>
                           {item.interests} · {item.budget}
                         </p>
                         <div className="mt-4 flex flex-wrap gap-2">
                           <button
-                            className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-[#e3f6e9] px-3.5 text-xs font-bold text-[#087947]"
+                            className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-[#e3f6e9] px-3 text-xs font-bold text-[#087947]"
                             onClick={() => openTripModal(item, "route")}
                           >
                             <Icon name="route" className="!h-3.5 !w-3.5" />
-                            View Route
+                            Route
                           </button>
                           <button
-                            className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-[#eef5fb] px-3.5 text-xs font-bold text-[#0c4a6e]"
+                            className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-[#eef5fb] px-3 text-xs font-bold text-[#0c4a6e]"
                             onClick={() => openTripModal(item, "rest")}
                           >
                             <Icon name="bed" className="!h-3.5 !w-3.5" />
-                            Places to Rest
+                            Rest
+                          </button>
+                          <button
+                            className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-[#fef3c7] px-3 text-xs font-bold text-[#92400e]"
+                            onClick={() => openTripModal(item, "budget")}
+                          >
+                            <Icon name="wallet" className="!h-3.5 !w-3.5" />
+                            Budget
                           </button>
                         </div>
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                        <div
+                          className={`mt-4 flex flex-wrap items-center justify-between gap-2 border-t pt-3 ${
+                            dark ? "border-[#244463]" : "border-slate-100"
+                          }`}
+                        >
                           <button
-                            className="flex min-h-10 items-center gap-2 text-sm font-bold text-[#087947]"
+                            className="flex min-h-10 items-center gap-2 text-sm font-bold text-[#1bc75c]"
                             onClick={() => openTripModal(item, "itinerary")}
                           >
                             Open Itinerary
@@ -1808,7 +2328,7 @@ export default function TravelApp({
                           <button
                             disabled={busy}
                             aria-label={`Delete ${item.title}`}
-                            className="min-h-10 px-2 text-sm text-red-700"
+                            className="min-h-10 px-2 text-sm text-red-500"
                             onClick={() => {
                               setTrip(item);
                               setModal("Delete Trip");
@@ -1869,9 +2389,9 @@ export default function TravelApp({
                   somewhere you never want to leave.
                 </p>
                 <p className="mt-4 text-sm leading-7">
-                  LankaTrails is built to help you find those moments—complete
-                  with authentic destination photography, realistic routes, and
-                  thoughtful places to rest along the way.
+                  LankaTrails unites Gemini AI planning, OpenStreetMap Route
+                  Optimization, real-time Weather Alerts, a Convex Budget
+                  Tracker, and a Hidden Gems Finder in one seamless experience.
                 </p>
                 <button onClick={openPlanner} className={`${primary} mt-7`}>
                   Find My Trail
@@ -1879,7 +2399,11 @@ export default function TravelApp({
                 </button>
               </div>
             </section>
-            <section className="bg-[#eaf7f0] px-6 py-14 text-[#08233f]">
+            <section
+              className={`px-6 py-14 ${
+                dark ? "bg-[#0e263d] text-white" : "bg-[#eaf7f0] text-[#08233f]"
+              }`}
+            >
               <div className="mx-auto max-w-6xl">
                 <h2 className="text-center text-3xl font-bold">
                   Thoughtful journeys. By design.
@@ -1894,21 +2418,21 @@ export default function TravelApp({
                     [
                       "leaf",
                       "Travel a little slower",
-                      "Leave room for scenic train rides, rest stops, local food, and the people you meet.",
+                      "Leave room for scenic train rides, rest stops, local food, and hidden gems.",
                     ],
                     [
                       "shield",
                       "Honest inspiration",
-                      "Clearly labelled AI suggestions and manual plans. Estimated budgets, never fake bookings.",
+                      "Clearly labelled AI suggestions, live weather checks, and estimated LKR budgets.",
                     ],
                   ].map(([icon, title, text]) => (
                     <article
                       key={title}
-                      className="rounded-2xl border border-[#d7e7dc] bg-white p-7"
+                      className={`rounded-2xl border p-7 ${cardSurface}`}
                     >
-                      <Icon name={icon} className="!h-8 !w-8 text-green-700" />
+                      <Icon name={icon} className="!h-8 !w-8 text-[#1bc75c]" />
                       <h3 className="mt-5 text-lg font-bold">{title}</h3>
-                      <p className="mt-3 text-sm leading-7 text-slate-600">
+                      <p className={`mt-3 text-sm leading-7 ${mutedText}`}>
                         {text}
                       </p>
                     </article>
@@ -1923,9 +2447,7 @@ export default function TravelApp({
               <p className="text-sm leading-7">
                 LankaTrails combines curated Sri Lankan destinations, a live
                 island map, and Gemini-powered itinerary inspiration. Your plans
-                belong to your private traveller account. Routes and costs are
-                suggestions, not guaranteed prices or bookings. Check travel
-                details, local guidance, and weather before setting off.
+                and budget entries belong to your private Convex account.
               </p>
               <button
                 onClick={() => navigate("Contact")}
@@ -1966,17 +2488,17 @@ export default function TravelApp({
                     [
                       "mail",
                       "A direct line to the team",
-                      "Messages are stored privately for the site team to review. This form does not send an email confirmation.",
+                      "Messages are stored privately in Convex for the site team to review.",
                     ],
                   ].map(([icon, title, copy]) => (
                     <div
                       key={title}
-                      className="flex gap-4 rounded-xl bg-[#edf7f2] p-5 text-[#08233f]"
+                      className={`flex gap-4 rounded-xl p-5 ${softBox}`}
                     >
-                      <Icon name={icon} className="mt-1 text-green-700" />
+                      <Icon name={icon} className="mt-1 text-[#1bc75c]" />
                       <div>
                         <h3 className="text-sm font-bold">{title}</h3>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                        <p className={`mt-2 text-sm leading-6 ${mutedText}`}>
                           {copy}
                         </p>
                       </div>
@@ -2008,10 +2530,10 @@ export default function TravelApp({
                     setBusy(false);
                   }
                 }}
-                className="rounded-2xl border border-slate-200 bg-white p-6 text-[#08233f] shadow-sm md:p-8"
+                className={`rounded-2xl border p-6 shadow-sm md:p-8 ${cardSurface}`}
               >
                 <h2 className="text-2xl font-bold">Send a message</h2>
-                <p className="mt-2 text-sm text-slate-600">
+                <p className={`mt-2 text-sm ${mutedText}`}>
                   A question, an idea, or a little island inspiration.
                 </p>
                 <label className="hidden" aria-hidden="true">
@@ -2030,7 +2552,7 @@ export default function TravelApp({
                         type={type}
                         required
                         placeholder={placeholder}
-                        className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 px-4 font-normal outline-none focus:ring-2 focus:ring-green-600"
+                        className={`mt-2 min-h-12 w-full rounded-lg border px-4 font-normal outline-none focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                       />
                     </label>
                   ))}
@@ -2039,7 +2561,7 @@ export default function TravelApp({
                   What’s it about?
                   <select
                     name="topic"
-                    className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 px-3 font-normal focus:ring-2 focus:ring-green-600"
+                    className={`mt-2 min-h-12 w-full rounded-lg border px-3 font-normal focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                   >
                     <option>Trip planning</option>
                     <option>Site feedback</option>
@@ -2054,7 +2576,7 @@ export default function TravelApp({
                     minLength={10}
                     rows={5}
                     placeholder="Tell us what you have in mind…"
-                    className="mt-2 w-full resize-y rounded-lg border border-slate-300 p-4 font-normal outline-none focus:ring-2 focus:ring-green-600"
+                    className={`mt-2 w-full resize-y rounded-lg border p-4 font-normal outline-none focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                   />
                 </label>
                 <button
@@ -2065,7 +2587,7 @@ export default function TravelApp({
                   {busy ? "Sending…" : "Send Message"}
                   <Icon name="mail" />
                 </button>
-                <p role="status" className="mt-4 text-sm leading-6 text-green-800">
+                <p role="status" className="mt-4 text-sm leading-6 text-[#1bc75c]">
                   {contactNotice ||
                     "Your message is private. No email confirmation is sent."}
                 </p>
@@ -2128,10 +2650,20 @@ export default function TravelApp({
         </div>
       </footer>
 
+      {/* Support AI Chatbot across all pages */}
+      <SupportChatWidget pageName={view} dark={dark} />
+
       {modal && (
         <Modal
           title={modal}
-          wide={modal === "Your Itinerary" || Boolean(activeModalPlace)}
+          dark={dark}
+          wide={
+            modal === "Your Itinerary" ||
+            modal === "Hidden Gems Finder" ||
+            modal === "Weather Alerts" ||
+            modal === "Budget Tracker" ||
+            Boolean(activeModalPlace)
+          }
           onClose={() => {
             setLightboxOpen(false);
             setModal(null);
@@ -2180,13 +2712,15 @@ export default function TravelApp({
                 }
               }}
             >
-              <p className="mb-5 text-sm leading-7 text-slate-600">
+              <p className={`mb-5 text-sm leading-7 ${mutedText}`}>
                 {authMode === "register"
-                  ? "Create your traveller account and keep your journeys in one place."
+                  ? "Create your traveller account and keep your journeys, budgets & hidden gems in one place."
                   : "Welcome back. Your saved journeys are waiting for you."}
               </p>
               <div
-                className="mb-6 grid grid-cols-2 rounded-xl bg-[#eef5f1] p-1"
+                className={`mb-6 grid grid-cols-2 rounded-xl p-1 ${
+                  dark ? "bg-[#14304b]" : "bg-[#eef5f1]"
+                }`}
                 role="tablist"
                 aria-label="Account access"
               >
@@ -2200,7 +2734,13 @@ export default function TravelApp({
                       setAuthMode(mode);
                       setNotice("");
                     }}
-                    className={`min-h-11 rounded-lg text-sm font-semibold ${authMode === mode ? "bg-white shadow-sm" : ""}`}
+                    className={`min-h-11 rounded-lg text-sm font-semibold ${
+                      authMode === mode
+                        ? dark
+                          ? "bg-[#0e2238] text-white shadow-sm"
+                          : "bg-white text-[#08233f] shadow-sm"
+                        : ""
+                    }`}
                   >
                     {mode === "login" ? "Sign In" : "Create Account"}
                   </button>
@@ -2215,7 +2755,7 @@ export default function TravelApp({
                     required
                     minLength={2}
                     maxLength={80}
-                    className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 px-4 focus:ring-2 focus:ring-green-600"
+                    className={`mt-2 min-h-12 w-full rounded-lg border px-4 focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                   />
                 </label>
               )}
@@ -2227,7 +2767,7 @@ export default function TravelApp({
                   autoComplete="email"
                   required
                   maxLength={200}
-                  className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 px-4 focus:ring-2 focus:ring-green-600"
+                  className={`mt-2 min-h-12 w-full rounded-lg border px-4 focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                 />
               </label>
               <label className="mt-4 block text-sm font-semibold">
@@ -2243,11 +2783,11 @@ export default function TravelApp({
                   required
                   minLength={authMode === "register" ? 10 : 1}
                   maxLength={128}
-                  className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 px-4 focus:ring-2 focus:ring-green-600"
+                  className={`mt-2 min-h-12 w-full rounded-lg border px-4 focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                 />
               </label>
               {authMode === "register" && (
-                <p className="mt-2 text-xs text-slate-600">
+                <p className={`mt-2 text-xs ${mutedText}`}>
                   Use at least 10 characters. Never reuse an important password.
                 </p>
               )}
@@ -2263,19 +2803,19 @@ export default function TravelApp({
                     : "Sign In"}
                 <Icon name="arrow" />
               </button>
-              <p role="status" className="mt-4 text-sm leading-6 text-[#8b3021]">
+              <p role="status" className="mt-4 text-sm leading-6 text-red-400">
                 {notice}
               </p>
             </form>
           ) : modal === "Your Account" && user ? (
             <>
-              <div className="rounded-xl bg-green-50 p-5">
+              <div className={`rounded-xl p-5 ${softBox}`}>
                 <p className="text-xl font-bold">{user.name}</p>
-                <p className="mt-2 break-all text-sm text-slate-600">
+                <p className={`mt-2 break-all text-sm ${mutedText}`}>
                   {user.email}
                 </p>
-                <p className="mt-3 text-xs text-green-800">
-                  Traveller account · Your trips are private
+                <p className="mt-3 text-xs text-[#1bc75c]">
+                  Traveller account · Your trips, budgets & hidden gems are private
                 </p>
               </div>
               <button
@@ -2290,7 +2830,7 @@ export default function TravelApp({
               </button>
               <button
                 disabled={busy}
-                className="ml-3 min-h-11 px-4 text-sm font-semibold text-slate-700"
+                className="ml-3 min-h-11 px-4 text-sm font-semibold"
                 onClick={async () => {
                   setBusy(true);
                   try {
@@ -2313,7 +2853,7 @@ export default function TravelApp({
             </>
           ) : modal === "Delete Trip" && trip ? (
             <>
-              <p className="text-sm leading-7 text-slate-600">
+              <p className={`text-sm leading-7 ${mutedText}`}>
                 Delete “{trip.title}” from your account? This cannot be undone.
               </p>
               <div className="mt-6 flex gap-3">
@@ -2335,17 +2875,420 @@ export default function TravelApp({
                 </button>
               </div>
             </>
+          ) : modal === "Weather Alerts" ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className={`text-sm ${mutedText}`}>
+                  Live Sri Lanka Weather & Monsoon Alerts via Open-Meteo API
+                </p>
+                <select
+                  aria-label="Choose destination for weather"
+                  value={weatherSlug}
+                  onChange={(e) => {
+                    setWeatherBusy(true);
+                    setWeatherSlug(e.target.value);
+                  }}
+                  className={`min-h-11 rounded-lg border px-3 text-sm font-semibold ${inputSurface}`}
+                >
+                  {places.map((p) => (
+                    <option key={p.id} value={p.slug}>
+                      {p.name} ({p.district})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {weatherBusy && !weatherData ? (
+                <p className="py-6 text-sm">Loading live weather alerts…</p>
+              ) : weatherError ? (
+                <p className="rounded-xl bg-red-50 p-4 text-sm text-red-700">
+                  {weatherError}
+                </p>
+              ) : weatherData ? (
+                <>
+                  <div
+                    className={`rounded-2xl border p-5 ${
+                      weatherData.alert.level === "warning"
+                        ? "border-red-300 bg-red-50 text-red-900"
+                        : weatherData.alert.level === "caution"
+                          ? "border-amber-300 bg-amber-50 text-amber-950"
+                          : "border-emerald-300 bg-emerald-50 text-emerald-950"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider">
+                          {weatherData.alert.title}
+                        </p>
+                        <p className="mt-1 text-3xl font-extrabold">
+                          {weatherData.temperatureC}°C · {weatherData.condition}
+                        </p>
+                      </div>
+                      <div className="text-right text-xs font-semibold">
+                        <p>Rain chance: {weatherData.rainProbability}%</p>
+                        <p className="mt-1">Wind: {weatherData.windKmh} km/h</p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-sm leading-6">
+                      {weatherData.alert.advice}
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {weatherData.forecast.map((f) => (
+                      <div
+                        key={f.date}
+                        className={`rounded-xl border p-4 ${cardSurface}`}
+                      >
+                        <p className="text-xs font-bold text-[#1bc75c]">
+                          {f.date}
+                        </p>
+                        <p className="mt-1 text-lg font-bold">
+                          {f.maxC}° / {f.minC}°C
+                        </p>
+                        <p className={`mt-1 text-xs ${mutedText}`}>
+                          {f.condition} · {f.rainProb}% rain
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ) : modal === "Hidden Gems Finder" ? (
+            <div className="space-y-5">
+              <p className={`text-sm ${mutedText}`}>
+                Powered by Gemini + Convex — discover off-the-beaten-path
+                waterfalls, viewpoints, and local rest spots, and save them to
+                your account.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                <select
+                  aria-label="Region"
+                  value={gemRegion}
+                  onChange={(e) => setGemRegion(e.target.value)}
+                  className={`min-h-11 rounded-lg border px-3 text-sm ${inputSurface}`}
+                >
+                  {[
+                    "Ella & Hill Country",
+                    "Sigiriya & Cultural Triangle",
+                    "Galle & South Coast",
+                    "Kandy & Central Highlands",
+                    "Yala & Deep South",
+                    "Arugam Bay & East Coast",
+                  ].map((r) => (
+                    <option key={r}>{r}</option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Vibe"
+                  value={gemVibe}
+                  onChange={(e) => setGemVibe(e.target.value)}
+                  className={`min-h-11 rounded-lg border px-3 text-sm ${inputSurface}`}
+                >
+                  {[
+                    "Waterfalls & Nature",
+                    "Quiet Beaches",
+                    "Local Food & Tea Cafes",
+                    "Ancient Ruins & Culture",
+                  ].map((v) => (
+                    <option key={v}>{v}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  disabled={gemBusy}
+                  onClick={() => void findHiddenGems()}
+                  className={primary}
+                >
+                  {gemBusy ? "Searching…" : "Discover Gems"}
+                </button>
+              </div>
+              {gemNotice && (
+                <p className="text-sm font-medium text-[#1bc75c]">
+                  {gemNotice}
+                </p>
+              )}
+
+              {discoveredGems.length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-[#1bc75c]">
+                    Gemini Discoveries
+                  </h3>
+                  {discoveredGems.map((gem) => (
+                    <article
+                      key={gem.name}
+                      className={`rounded-xl border p-4 ${softBox}`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <span className="rounded-full bg-[#e3f6e9] px-2.5 py-0.5 text-[11px] font-bold text-[#087947]">
+                            {gem.category} · {gem.region}
+                          </span>
+                          <h4 className="mt-1.5 text-lg font-bold">
+                            {gem.name}
+                          </h4>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!user || !isAuthenticated) {
+                              setGemNotice(
+                                "Sign in to save hidden gems to Convex."
+                              );
+                              return;
+                            }
+                            try {
+                              await saveGemMutation(gem);
+                              setGemNotice(
+                                `Saved "${gem.name}" to your Convex collection!`
+                              );
+                            } catch (err) {
+                              setGemNotice((err as Error).message);
+                            }
+                          }}
+                          className="rounded-full bg-[#087947] px-3.5 py-1.5 text-xs font-bold text-white"
+                        >
+                          Save Gem
+                        </button>
+                      </div>
+                      <p className="mt-2 text-sm leading-6">{gem.whySpecial}</p>
+                      <p className={`mt-2 text-xs ${mutedText}`}>
+                        <strong>Route:</strong> {gem.howToReach} ·{" "}
+                        <strong>Best time:</strong> {gem.bestTime}
+                      </p>
+                      <p className={`mt-1 text-xs ${mutedText}`}>
+                        <strong>Rest spot:</strong> {gem.restTip}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              {savedGems.length > 0 && (
+                <div className="space-y-3 border-t border-slate-200 pt-4">
+                  <h3 className="text-sm font-bold uppercase tracking-wider">
+                    Saved in Your Convex Account ({savedGems.length})
+                  </h3>
+                  {savedGems.map((gem) => (
+                    <div
+                      key={gem._id}
+                      className={`flex items-start justify-between gap-3 rounded-xl border p-3.5 ${cardSurface}`}
+                    >
+                      <div>
+                        <p className="text-sm font-bold">{gem.name}</p>
+                        <p className={`text-xs ${mutedText}`}>
+                          {gem.category} · {gem.region} — {gem.restTip}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void removeGemMutation({ id: gem._id })}
+                        className="text-xs font-semibold text-red-500"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : modal === "Budget Tracker" ? (
+            <div className="space-y-5">
+              {user && saved.length > 0 ? (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className={`text-sm ${mutedText}`}>
+                      Convex Live Trip Budget Tracker
+                    </p>
+                    <select
+                      aria-label="Select saved trip for budget tracker"
+                      value={activeBudgetTripId}
+                      onChange={(e) => setBudgetTripId(e.target.value)}
+                      className={`min-h-10 rounded-lg border px-3 text-sm font-semibold ${inputSurface}`}
+                    >
+                      {saved.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className={`rounded-2xl border p-5 ${softBox}`}>
+                    <div className="flex flex-wrap items-end justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-bold uppercase text-[#1bc75c]">
+                          Planned vs Logged Spend
+                        </p>
+                        <p className="mt-1 text-2xl font-extrabold">
+                          LKR {totalLoggedSpend.toLocaleString()}{" "}
+                          <span className={`text-sm font-normal ${mutedText}`}>
+                            / LKR {activeTargetBudget.toLocaleString()}
+                          </span>
+                        </p>
+                      </div>
+                      <p className="text-sm font-bold">
+                        Remaining: LKR{" "}
+                        {Math.max(
+                          0,
+                          activeTargetBudget - totalLoggedSpend
+                        ).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#087b35] to-[#1bc75c] transition-all duration-500"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            activeTargetBudget > 0
+                              ? Math.round(
+                                  (totalLoggedSpend / activeTargetBudget) * 100
+                                )
+                              : 0
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!activeBudgetTripId) return;
+                      await addExpenseMutation({
+                        tripId: activeBudgetTripId as Id<"trips">,
+                        title: expenseTitle,
+                        category: expenseCategory,
+                        amount: Number(expenseAmount),
+                        dayNumber: Number(expenseDay) || 1,
+                      });
+                      setExpenseTitle("");
+                      setExpenseAmount("");
+                    }}
+                    className="grid gap-3 sm:grid-cols-[1.4fr_1fr_1fr_auto]"
+                  >
+                    <input
+                      required
+                      minLength={2}
+                      placeholder="Expense (e.g. Train tickets)"
+                      value={expenseTitle}
+                      onChange={(e) => setExpenseTitle(e.target.value)}
+                      className={`min-h-11 rounded-lg border px-3 text-sm ${inputSurface}`}
+                    />
+                    <select
+                      value={expenseCategory}
+                      onChange={(e) =>
+                        setExpenseCategory(
+                          e.target.value as
+                            | "Stay"
+                            | "Transport"
+                            | "Food"
+                            | "Activities"
+                            | "Other"
+                        )
+                      }
+                      className={`min-h-11 rounded-lg border px-3 text-sm ${inputSurface}`}
+                    >
+                      {["Stay", "Transport", "Food", "Activities", "Other"].map(
+                        (c) => (
+                          <option key={c}>{c}</option>
+                        )
+                      )}
+                    </select>
+                    <input
+                      required
+                      type="number"
+                      min="1"
+                      placeholder="LKR"
+                      value={expenseAmount}
+                      onChange={(e) => setExpenseAmount(e.target.value)}
+                      className={`min-h-11 rounded-lg border px-3 text-sm ${inputSurface}`}
+                    />
+                    <button type="submit" className={primary}>
+                      Add
+                    </button>
+                  </form>
+                  <div className="space-y-2">
+                    {tripExpenses.map((exp) => (
+                      <div
+                        key={exp._id}
+                        className={`flex items-center justify-between rounded-xl border px-4 py-3 ${cardSurface}`}
+                      >
+                        <div>
+                          <p className="text-sm font-bold">{exp.title}</p>
+                          <p className={`text-xs ${mutedText}`}>
+                            {exp.category}
+                            {exp.dayNumber ? ` · Day ${exp.dayNumber}` : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-bold text-[#1bc75c]">
+                            LKR {exp.amount.toLocaleString()}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void deleteExpenseMutation({ id: exp._id })
+                            }
+                            className="text-xs text-red-500"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className={`text-sm leading-6 ${mutedText}`}>
+                    Estimate your per-person Sri Lanka trip budget below, or
+                    sign in & create a trip to log real expenses in Convex.
+                  </p>
+                  <label className="block text-sm">
+                    Days
+                    <select
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                      className={`mt-2 min-h-11 w-full rounded-lg border px-3 ${inputSurface}`}
+                    >
+                      {["3", "5", "7", "10", "14"].map((day) => (
+                        <option key={day}>{day}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm">
+                    Travel budget
+                    <select
+                      value={budget}
+                      onChange={(e) => setBudget(e.target.value)}
+                      className={`mt-2 min-h-11 w-full rounded-lg border px-3 ${inputSurface}`}
+                    >
+                      {["Budget friendly", "Comfortable", "Luxury"].map(
+                        (value) => (
+                          <option key={value}>{value}</option>
+                        )
+                      )}
+                    </select>
+                  </label>
+                  <p className={`rounded-xl p-5 text-2xl font-bold ${softBox}`}>
+                    LKR {(daily * Number(duration)).toLocaleString()}
+                    <span className="mt-2 block text-sm font-normal">
+                      Estimated total · LKR {daily.toLocaleString()} per day
+                    </span>
+                  </p>
+                </>
+              )}
+            </div>
           ) : modal === "Photo Credits" ? (
             <div className="space-y-5">
               {places.map((place) => (
                 <div key={place.id}>
                   <h3 className="text-sm font-bold">{place.name}</h3>
-                  <p className="mt-1 break-words text-xs leading-6 text-slate-600">
+                  <p className={`mt-1 break-words text-xs leading-6 ${mutedText}`}>
                     {place.credit?.split(" · https:")[0] || "Wikimedia Commons"}
                   </p>
                   {place.credit?.includes("https:") && (
                     <a
-                      className="inline-flex min-h-11 items-center text-sm font-semibold text-green-800 underline"
+                      className="inline-flex min-h-11 items-center text-sm font-semibold text-[#1bc75c] underline"
                       href={`https:${place.credit.split("https:")[1]}`}
                       target="_blank"
                       rel="noreferrer"
@@ -2358,11 +3301,11 @@ export default function TravelApp({
             </div>
           ) : modal === "Your Itinerary" && trip ? (
             <>
-              <p className="text-xs font-semibold uppercase tracking-wider text-green-800">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#1bc75c]">
                 {trip.source === "manual"
                   ? "Your manual plan · Not AI-generated"
                   : "Created with Gemini"}{" "}
-                · Saved to your account
+                · Saved in Convex
               </p>
               <label className="mt-3 block text-sm font-semibold">
                 Trip title
@@ -2371,25 +3314,28 @@ export default function TravelApp({
                   value={trip.title}
                   maxLength={100}
                   onChange={(e) => setTrip({ ...trip, title: e.target.value })}
-                  className="mt-2 min-h-12 w-full rounded-lg border border-slate-300 px-3 text-xl font-bold outline-none focus:ring-2 focus:ring-green-600"
+                  className={`mt-2 min-h-12 w-full rounded-lg border px-3 text-xl font-bold outline-none focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                 />
               </label>
-              <p className="my-3 text-sm text-slate-600">
+              <p className={`my-3 text-sm ${mutedText}`}>
                 {trip.duration} days · {trip.travellers} traveller
                 {trip.travellers > 1 ? "s" : ""} · Starting from{" "}
                 {trip.startingPoint}
               </p>
 
-              {/* Tab Switcher inside Trip Modal */}
+              {/* 4 Tabs: Itinerary | Route & Optimizer | Where to Rest | Budget Tracker */}
               <div
-                className="mb-5 grid grid-cols-3 rounded-xl bg-[#eef5f1] p-1"
+                className={`mb-5 grid grid-cols-2 gap-1 rounded-xl p-1 sm:grid-cols-4 ${
+                  dark ? "bg-[#14304b]" : "bg-[#eef5f1]"
+                }`}
                 role="tablist"
                 aria-label="Trip details tabs"
               >
                 {[
-                  { id: "itinerary", label: "Day-by-Day Plan" },
-                  { id: "route", label: "Route & Map" },
+                  { id: "itinerary", label: "Day-by-Day" },
+                  { id: "route", label: "Route & Optimizer" },
                   { id: "rest", label: "Where to Rest" },
+                  { id: "budget", label: "Budget Tracker" },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -2397,12 +3343,16 @@ export default function TravelApp({
                     role="tab"
                     aria-selected={itineraryTab === tab.id}
                     onClick={() =>
-                      setItineraryTab(tab.id as "itinerary" | "route" | "rest")
+                      setItineraryTab(
+                        tab.id as "itinerary" | "route" | "rest" | "budget"
+                      )
                     }
-                    className={`min-h-10 rounded-lg px-2 text-xs font-bold transition sm:text-sm ${
+                    className={`min-h-10 rounded-lg px-2 text-xs font-bold transition ${
                       itineraryTab === tab.id
-                        ? "bg-white text-[#087947] shadow-sm"
-                        : "text-slate-600 hover:text-[#08233f]"
+                        ? dark
+                          ? "bg-[#0e2238] text-[#44d23c] shadow-sm"
+                          : "bg-white text-[#087947] shadow-sm"
+                        : `${mutedText}`
                     }`}
                   >
                     {tab.label}
@@ -2411,34 +3361,47 @@ export default function TravelApp({
               </div>
 
               {itineraryTab === "route" && (
-                <div className="space-y-4">
+                <div className="animate-lt-fade-in space-y-4">
                   <SriLankaMap
                     places={tripPlaces}
                     route
                     heightClass="h-[340px] md:h-[400px]"
                   />
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#d6e7dd] bg-[#f5faf7] p-4">
+                  <div
+                    className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${softBox}`}
+                  >
                     <div>
-                      <p className="text-sm font-bold text-[#08233f]">
-                        Full Route Navigation
+                      <p className="text-sm font-bold">
+                        Route Optimizer (Leaflet + OpenStreetMap)
                       </p>
-                      <p className="text-xs text-slate-600">
+                      <p className={`text-xs ${mutedText}`}>
                         {trip.startingPoint} →{" "}
                         {tripPlaces.map((p) => p.name).join(" → ")}
                       </p>
                     </div>
-                    <a
-                      href={buildGoogleMapsRouteUrl(
-                        trip.startingPoint,
-                        tripPlaces
-                      )}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#087947] px-4 text-xs font-bold text-white hover:brightness-110"
-                    >
-                      Open in Google Maps
-                      <Icon name="arrow" className="!h-3.5 !w-3.5" />
-                    </a>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={busy || tripPlaces.length < 2}
+                        onClick={() => void optimizeCurrentTripRoute()}
+                        className="inline-flex min-h-10 items-center gap-1.5 rounded-full bg-[#031d38] px-4 text-xs font-bold text-[#b7e36a] hover:brightness-110"
+                      >
+                        <Icon name="route" className="!h-3.5 !w-3.5" />
+                        Optimize Stop Order
+                      </button>
+                      <a
+                        href={buildGoogleMapsRouteUrl(
+                          trip.startingPoint,
+                          tripPlaces
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex min-h-10 items-center gap-2 rounded-full bg-[#087947] px-4 text-xs font-bold text-white hover:brightness-110"
+                      >
+                        Google Maps
+                        <Icon name="arrow" className="!h-3.5 !w-3.5" />
+                      </a>
+                    </div>
                   </div>
                   <div className="space-y-3">
                     {trip.days.map((day, i) => {
@@ -2448,7 +3411,7 @@ export default function TravelApp({
                       return (
                         <div
                           key={i}
-                          className="flex gap-3 rounded-xl border border-slate-200 bg-white p-4"
+                          className={`flex gap-3 rounded-xl border p-4 ${cardSurface}`}
                         >
                           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#087947] text-xs font-bold text-white">
                             {i + 1}
@@ -2465,11 +3428,11 @@ export default function TravelApp({
                               )}
                             </div>
                             {day.transportMode && (
-                              <p className="mt-1 text-xs font-semibold text-[#087947]">
+                              <p className="mt-1 text-xs font-semibold text-[#1bc75c]">
                                 Transport: {day.transportMode}
                               </p>
                             )}
-                            <p className="mt-1.5 text-sm leading-6 text-slate-600">
+                            <p className={`mt-1.5 text-sm leading-6 ${mutedText}`}>
                               {day.routeTip ||
                                 stopPlace?.gettingThere ||
                                 day.travelNote}
@@ -2483,8 +3446,8 @@ export default function TravelApp({
               )}
 
               {itineraryTab === "rest" && (
-                <div className="space-y-4">
-                  <p className="text-sm text-slate-600">
+                <div className="animate-lt-fade-in space-y-4">
+                  <p className={`text-sm ${mutedText}`}>
                     Recommended stays, guesthouses, and quiet refreshment stops
                     along your {trip.duration}-day route.
                   </p>
@@ -2495,13 +3458,15 @@ export default function TravelApp({
                     return (
                       <section
                         key={i}
-                        className="rounded-xl border border-[#d6e7dd] bg-[#f5faf7] p-4"
+                        className={`rounded-xl border p-4 ${softBox}`}
                       >
-                        <p className="text-xs font-bold uppercase tracking-wide text-[#087947]">
+                        <p className="text-xs font-bold uppercase tracking-wide text-[#1bc75c]">
                           Day {i + 1} · {stopPlace?.name || "Destination"}
                         </p>
                         {day.restRecommendation && (
-                          <p className="mt-2 rounded-lg bg-white p-3 text-sm leading-6 text-[#08233f] shadow-xs">
+                          <p
+                            className={`mt-2 rounded-lg p-3 text-sm leading-6 ${cardSurface}`}
+                          >
                             <strong className="font-semibold">
                               Trip Rest Note:{" "}
                             </strong>
@@ -2513,20 +3478,20 @@ export default function TravelApp({
                             {stopPlace.restSpots.map((spot) => (
                               <div
                                 key={spot.name}
-                                className="rounded-lg border border-slate-200 bg-white p-3"
+                                className={`rounded-lg border p-3 ${cardSurface}`}
                               >
                                 <div className="flex items-start justify-between gap-2">
-                                  <p className="text-xs font-bold text-[#08233f]">
+                                  <p className="text-xs font-bold">
                                     {spot.name}
                                   </p>
                                   <span className="shrink-0 rounded-full bg-[#e3f6e9] px-2 py-0.5 text-[10px] font-bold text-[#087947]">
                                     {spot.type}
                                   </span>
                                 </div>
-                                <p className="mt-1 text-xs font-semibold text-slate-500">
+                                <p className={`mt-1 text-xs font-semibold ${mutedText}`}>
                                   {spot.priceRange}
                                 </p>
-                                <p className="mt-1 text-xs leading-5 text-slate-600">
+                                <p className={`mt-1 text-xs leading-5 ${mutedText}`}>
                                   {spot.note}
                                 </p>
                               </div>
@@ -2539,8 +3504,152 @@ export default function TravelApp({
                 </div>
               )}
 
+              {itineraryTab === "budget" && (
+                <div className="animate-lt-fade-in space-y-4">
+                  <div className={`rounded-xl border p-5 ${softBox}`}>
+                    <div className="flex flex-wrap items-end justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase text-[#1bc75c]">
+                          Convex Budget Tracker
+                        </p>
+                        <p className="mt-1 text-2xl font-extrabold">
+                          LKR {totalLoggedSpend.toLocaleString()}{" "}
+                          <span className={`text-sm font-normal ${mutedText}`}>
+                            / LKR {activeTargetBudget.toLocaleString()}
+                          </span>
+                        </p>
+                      </div>
+                      <p className="text-sm font-bold">
+                        Remaining: LKR{" "}
+                        {Math.max(
+                          0,
+                          activeTargetBudget - totalLoggedSpend
+                        ).toLocaleString()}
+                      </p>
+                    </div>
+                    <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#087b35] to-[#1bc75c] transition-all duration-500"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            activeTargetBudget > 0
+                              ? Math.round(
+                                  (totalLoggedSpend / activeTargetBudget) * 100
+                                )
+                              : 0
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      await addExpenseMutation({
+                        tripId: trip.id as Id<"trips">,
+                        title: expenseTitle,
+                        category: expenseCategory,
+                        amount: Number(expenseAmount),
+                        dayNumber: Number(expenseDay) || 1,
+                      });
+                      setExpenseTitle("");
+                      setExpenseAmount("");
+                    }}
+                    className="grid gap-3 sm:grid-cols-[1.4fr_1fr_1fr_0.7fr_auto]"
+                  >
+                    <input
+                      required
+                      minLength={2}
+                      placeholder="Expense item"
+                      value={expenseTitle}
+                      onChange={(e) => setExpenseTitle(e.target.value)}
+                      className={`min-h-11 rounded-lg border px-3 text-sm ${inputSurface}`}
+                    />
+                    <select
+                      value={expenseCategory}
+                      onChange={(e) =>
+                        setExpenseCategory(
+                          e.target.value as
+                            | "Stay"
+                            | "Transport"
+                            | "Food"
+                            | "Activities"
+                            | "Other"
+                        )
+                      }
+                      className={`min-h-11 rounded-lg border px-3 text-sm ${inputSurface}`}
+                    >
+                      {["Stay", "Transport", "Food", "Activities", "Other"].map(
+                        (c) => (
+                          <option key={c}>{c}</option>
+                        )
+                      )}
+                    </select>
+                    <input
+                      required
+                      type="number"
+                      min="1"
+                      placeholder="LKR"
+                      value={expenseAmount}
+                      onChange={(e) => setExpenseAmount(e.target.value)}
+                      className={`min-h-11 rounded-lg border px-3 text-sm ${inputSurface}`}
+                    />
+                    <input
+                      type="number"
+                      min="1"
+                      max={Number(trip.duration)}
+                      value={expenseDay}
+                      onChange={(e) => setExpenseDay(e.target.value)}
+                      aria-label="Day number"
+                      className={`min-h-11 rounded-lg border px-3 text-sm ${inputSurface}`}
+                    />
+                    <button type="submit" className={primary}>
+                      Add
+                    </button>
+                  </form>
+                  <div className="space-y-2">
+                    {tripExpenses.length === 0 ? (
+                      <p className={`text-sm ${mutedText}`}>
+                        No expenses logged yet. Add hotel, train, food, or
+                        ticket costs above to track your spend in Convex.
+                      </p>
+                    ) : (
+                      tripExpenses.map((exp) => (
+                        <div
+                          key={exp._id}
+                          className={`flex items-center justify-between rounded-xl border px-4 py-3 ${cardSurface}`}
+                        >
+                          <div>
+                            <p className="text-sm font-bold">{exp.title}</p>
+                            <p className={`text-xs ${mutedText}`}>
+                              {exp.category}
+                              {exp.dayNumber ? ` · Day ${exp.dayNumber}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm font-bold text-[#1bc75c]">
+                              LKR {exp.amount.toLocaleString()}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void deleteExpenseMutation({ id: exp._id })
+                              }
+                              className="text-xs text-red-500"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
               {itineraryTab === "itinerary" && (
-                <>
+                <div className="animate-lt-fade-in">
                   <SriLankaMap
                     places={tripPlaces}
                     route
@@ -2554,15 +3663,17 @@ export default function TravelApp({
                       return (
                         <section
                           key={i}
-                          className="rounded-xl border border-[#dae8df] bg-[#f5faf7] p-4"
+                          className={`rounded-xl border p-4 ${softBox}`}
                         >
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs font-bold uppercase tracking-wide text-green-800">
+                            <p className="text-xs font-bold uppercase tracking-wide text-[#1bc75c]">
                               DAY {i + 1} · {stopPlace?.name || "Destination"}
                             </p>
                             <div className="flex flex-wrap gap-1.5">
                               {day.transportMode && (
-                                <span className="rounded-full bg-white px-2.5 py-0.5 text-[11px] font-semibold text-[#08233f]">
+                                <span
+                                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${cardSurface}`}
+                                >
                                   {day.transportMode}
                                 </span>
                               )}
@@ -2588,7 +3699,7 @@ export default function TravelApp({
                                   ),
                                 })
                               }
-                              className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 font-normal focus:ring-2 focus:ring-green-600"
+                              className={`mt-2 min-h-11 w-full rounded-lg border px-3 font-normal focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                             />
                           </label>
                           <label className="mt-3 block text-sm font-semibold">
@@ -2602,26 +3713,31 @@ export default function TravelApp({
                                   ...trip,
                                   days: trip.days.map((entry, j) =>
                                     j === i
-                                      ? { ...entry, description: e.target.value }
+                                      ? {
+                                          ...entry,
+                                          description: e.target.value,
+                                        }
                                       : entry
                                   ),
                                 })
                               }
-                              className="mt-2 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm font-normal leading-6 focus:ring-2 focus:ring-green-600"
+                              className={`mt-2 w-full rounded-lg border p-3 text-sm font-normal leading-6 focus:ring-2 focus:ring-green-600 ${inputSurface}`}
                             />
                           </label>
                           {day.restRecommendation && (
-                            <p className="mt-2.5 rounded-lg bg-white/90 px-3 py-2 text-xs leading-5 text-slate-700">
-                              <strong className="text-[#087947]">
+                            <p
+                              className={`mt-2.5 rounded-lg px-3 py-2 text-xs leading-5 ${cardSurface}`}
+                            >
+                              <strong className="text-[#1bc75c]">
                                 Where to rest:{" "}
                               </strong>
                               {day.restRecommendation}
                             </p>
                           )}
-                          <p className="mt-2.5 text-sm leading-6 text-slate-600">
+                          <p className={`mt-2.5 text-sm leading-6 ${mutedText}`}>
                             {day.travelNote}
                           </p>
-                          <p className="mt-2 text-sm font-bold text-green-800">
+                          <p className="mt-2 text-sm font-bold text-[#1bc75c]">
                             Est. LKR {day.estimatedCost.toLocaleString()} /
                             person
                           </p>
@@ -2629,10 +3745,10 @@ export default function TravelApp({
                       );
                     })}
                   </div>
-                </>
+                </div>
               )}
 
-              <div className="mt-5 rounded-xl bg-[#e6f5ec] p-5">
+              <div className={`mt-5 rounded-xl border p-5 ${softBox}`}>
                 <p className="text-sm">
                   Estimated trip budget for {trip.travellers} traveller
                   {trip.travellers > 1 ? "s" : ""}
@@ -2645,7 +3761,7 @@ export default function TravelApp({
                   ).toLocaleString()}
                 </p>
               </div>
-              <p className="mt-4 text-sm leading-6 text-slate-600">
+              <p className={`mt-4 text-sm leading-6 ${mutedText}`}>
                 AI suggestions, not bookings or verified live prices. Check
                 monsoon conditions, travel times, and opening hours.
                 International flights excluded.
@@ -2676,49 +3792,8 @@ export default function TravelApp({
                   Plan Another Version
                 </button>
               </div>
-              <p role="status" className="mt-3 text-sm text-green-800">
+              <p role="status" className="mt-3 text-sm text-[#1bc75c]">
                 {notice}
-              </p>
-            </>
-          ) : modal === "Budget Calculator" ? (
-            <>
-              <p className="text-sm leading-6 text-slate-600">
-                Adjust your duration and comfort level for an illustrative
-                per-person budget. Excludes flights.
-              </p>
-              <label className="mt-5 block text-sm">
-                Days
-                <select
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                  className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"
-                >
-                  {["3", "5", "7", "10", "14"].map((day) => (
-                    <option key={day}>{day}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="mt-4 block text-sm">
-                Travel budget
-                <select
-                  value={budget}
-                  onChange={(e) => setBudget(e.target.value)}
-                  className="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"
-                >
-                  {["Budget friendly", "Comfortable", "Luxury"].map((value) => (
-                    <option key={value}>{value}</option>
-                  ))}
-                </select>
-              </label>
-              <p className="mt-6 rounded-xl bg-green-50 p-5 text-2xl font-bold">
-                LKR {(daily * Number(duration)).toLocaleString()}
-                <span className="mt-2 block text-sm font-normal">
-                  Estimated total · LKR {daily.toLocaleString()} per day
-                </span>
-              </p>
-              <p className="mt-3 text-xs leading-5 text-slate-600">
-                Planning estimate only. Actual accommodation, food, transport
-                and activity costs will vary.
               </p>
             </>
           ) : activeModalPlace ? (
@@ -2731,7 +3806,7 @@ export default function TravelApp({
                     activeModalPlace.image
                   }
                   alt={`${activeModalPlace.name} photo ${activePhotoIndex + 1}`}
-                  className={`${lightboxOpen ? "h-[60vh]" : "h-64 sm:h-80"} w-full object-cover transition-all`}
+                  className={`${lightboxOpen ? "h-[60vh]" : "h-64 sm:h-80"} w-full object-cover transition-all duration-300`}
                 />
                 {activeGalleryImages.length > 1 && (
                   <>
@@ -2787,7 +3862,7 @@ export default function TravelApp({
                       onClick={() => setActivePhotoIndex(idx)}
                       className={`overflow-hidden rounded-lg border-2 transition ${
                         activePhotoIndex === idx
-                          ? "border-[#087947] ring-2 ring-[#087947]/30"
+                          ? "border-[#1bc75c] ring-2 ring-[#1bc75c]/30"
                           : "border-transparent opacity-75 hover:opacity-100"
                       }`}
                     >
@@ -2801,50 +3876,59 @@ export default function TravelApp({
                 </div>
               )}
 
-              <div className="mt-5 flex flex-wrap items-center gap-2">
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-bold ${activeModalPlace.color}`}
-                >
-                  {activeModalPlace.tag}
-                </span>
-                <span className="text-xs font-semibold uppercase tracking-wider text-green-800">
-                  {activeModalPlace.subtitle}
-                </span>
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-bold ${activeModalPlace.color}`}
+                  >
+                    {activeModalPlace.tag}
+                  </span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-[#1bc75c]">
+                    {activeModalPlace.subtitle}
+                  </span>
+                </div>
+                {placeWeather && (
+                  <span className="rounded-full bg-[#eef5fb] px-3 py-1 text-xs font-bold text-[#0c4a6e]">
+                    {placeWeather.temperatureC}°C · {placeWeather.condition} ·{" "}
+                    {placeWeather.alert.title}
+                  </span>
+                )}
               </div>
 
-              <p className="mt-3 text-sm leading-7 text-slate-600">
+              <p className={`mt-3 text-sm leading-7 ${mutedText}`}>
                 {activeModalPlace.detail}
               </p>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl bg-[#f5faf7] p-3.5">
-                  <p className="text-xs font-bold uppercase text-[#087947]">
+                <div className={`rounded-xl border p-3.5 ${softBox}`}>
+                  <p className="text-xs font-bold uppercase text-[#1bc75c]">
                     Best Time to Visit
                   </p>
                   <p className="mt-1 text-sm font-semibold">
                     {activeModalPlace.bestTimeToVisit}
                   </p>
                 </div>
-                <div className="rounded-xl bg-[#f5faf7] p-3.5">
-                  <p className="text-xs font-bold uppercase text-[#087947]">
+                <div className={`rounded-xl border p-3.5 ${softBox}`}>
+                  <p className="text-xs font-bold uppercase text-[#1bc75c]">
                     Estimated Daily Budget
                   </p>
                   <p className="mt-1 text-sm font-semibold">
-                    LKR {activeModalPlace.estimatedDailyBudget.toLocaleString()}{" "}
-                    / day
+                    LKR{" "}
+                    {activeModalPlace.estimatedDailyBudget.toLocaleString()} /
+                    day
                   </p>
                 </div>
               </div>
 
               {activeModalPlace.highlights.length > 0 && (
                 <div className="mt-4">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  <h3 className={`text-xs font-bold uppercase tracking-wider ${mutedText}`}>
                     Top Highlights
                   </h3>
-                  <ul className="mt-2 space-y-1.5 text-sm text-slate-700">
+                  <ul className="mt-2 space-y-1.5 text-sm">
                     {activeModalPlace.highlights.map((h) => (
                       <li key={h} className="flex items-start gap-2">
-                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#087947]" />
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#1bc75c]" />
                         <span>{h}</span>
                       </li>
                     ))}
@@ -2852,19 +3936,19 @@ export default function TravelApp({
                 </div>
               )}
 
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#08233f]">
-                  <Icon name="route" className="!h-4 !w-4 text-[#087947]" />
+              <div className={`mt-4 rounded-xl border p-4 ${softBox}`}>
+                <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                  <Icon name="route" className="!h-4 !w-4 text-[#1bc75c]" />
                   Route & Getting There
                 </p>
-                <p className="mt-1.5 text-sm leading-6 text-slate-600">
+                <p className={`mt-1.5 text-sm leading-6 ${mutedText}`}>
                   {activeModalPlace.gettingThere}
                 </p>
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${activeModalPlace.latitude},${activeModalPlace.longitude}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-[#087947] underline"
+                  className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-[#1bc75c] underline"
                 >
                   Open location in Google Maps
                 </a>
@@ -2872,23 +3956,21 @@ export default function TravelApp({
 
               {activeModalPlace.restSpots.length > 0 && (
                 <div className="mt-4">
-                  <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#08233f]">
-                    <Icon name="bed" className="!h-4 !w-4 text-[#087947]" />
+                  <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
+                    <Icon name="bed" className="!h-4 !w-4 text-[#1bc75c]" />
                     Where to Rest & Stay
                   </p>
                   <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
                     {activeModalPlace.restSpots.map((spot) => (
                       <div
                         key={spot.name}
-                        className="rounded-xl border border-[#d7e7dc] bg-[#f5faf7] p-3"
+                        className={`rounded-xl border p-3 ${softBox}`}
                       >
-                        <p className="text-xs font-bold text-[#08233f]">
-                          {spot.name}
-                        </p>
-                        <p className="mt-0.5 text-[11px] font-semibold text-[#087947]">
+                        <p className="text-xs font-bold">{spot.name}</p>
+                        <p className="mt-0.5 text-[11px] font-semibold text-[#1bc75c]">
                           {spot.type} · {spot.priceRange}
                         </p>
-                        <p className="mt-1 text-xs leading-5 text-slate-600">
+                        <p className={`mt-1 text-xs leading-5 ${mutedText}`}>
                           {spot.note}
                         </p>
                       </div>
@@ -2911,21 +3993,19 @@ export default function TravelApp({
                 <Link
                   href={`/destinations/${activeModalPlace.slug}`}
                   onClick={() => setModal(null)}
-                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#087947] px-5 text-sm font-bold text-[#087947] hover:bg-[#edf8f3]"
+                  className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#087947] px-5 text-sm font-bold text-[#1bc75c] hover:bg-[#087947]/10"
                 >
                   Open Full Place Page
                 </Link>
               </div>
             </>
           ) : (
-            <div className="text-sm leading-7 text-slate-600">
+            <div className={`text-sm leading-7 ${mutedText}`}>
               {modal === "Privacy Policy"
-                ? "LankaTrails stores your account, private itineraries, generation attempt records, and submitted messages in its Convex database. Trip preferences and a public destination catalogue are sent to Google Gemini to generate suggestions; passwords are never sent to Gemini. An HTTP-only cookie keeps you signed in. You can delete saved trips in My Trips. No payment or booking details are collected."
+                ? "LankaTrails stores your account, private itineraries, budget tracker expenses, saved hidden gems, and submitted messages in its Convex database. Trip preferences and a public destination catalogue are sent to Google Gemini to generate suggestions; passwords are never sent to Gemini. An HTTP-only cookie keeps you signed in."
                 : modal === "Terms of Service"
-                  ? "LankaTrails is a planning tool, not a booking service. AI routes and budget estimates may be inaccurate and must be checked independently. No accommodation, transport, availability, or prices are guaranteed. Generation is limited to five attempts per account per hour."
-                  : modal === "Travel Guidance"
-                    ? "Check local weather and monsoon seasons, verify transport schedules, respect sacred sites, and use licensed guides where needed. Map lines show stop order, not navigable driving routes. Never rely on AI for emergency, medical, or safety-critical advice."
-                    : "From Sigiriya’s ancient fortress to the tea-covered hills of Ella and the golden beaches of Mirissa, discover an island full of possibilities. Explore the destination map, browse 5 photos per destination, and let Gemini draft an itinerary complete with routes and rest recommendations."}
+                  ? "LankaTrails is a planning tool, not a booking service. AI routes, weather advisories, and budget estimates must be checked independently. Generation is limited to five attempts per account per hour."
+                  : "From Sigiriya’s ancient fortress to the tea-covered hills of Ella and the golden beaches of Mirissa, discover an island full of possibilities. Explore 5 photos per destination, optimize routes, check live weather alerts, track LKR budgets, and ask our AI Travel Support assistant anytime."}
             </div>
           )}
         </Modal>

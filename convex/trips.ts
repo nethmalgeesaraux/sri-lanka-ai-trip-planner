@@ -563,3 +563,34 @@ export const deleteTrip = mutation({
     return { success: true };
   },
 });
+
+export const reorderTripDays = mutation({
+  args: {
+    id: v.id("trips"),
+    orderIndices: v.array(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const profile = await getOrCreateProfile(ctx);
+    const existing = await ctx.db.get("trips", args.id);
+    if (!existing || existing.profileId !== profile._id) {
+      throw new ConvexError("Unable to optimize this trip.");
+    }
+
+    const days = existing.days ?? [];
+    if (
+      args.orderIndices.length !== days.length ||
+      new Set(args.orderIndices).size !== days.length ||
+      args.orderIndices.some((i) => !Number.isInteger(i) || i < 0 || i >= days.length)
+    ) {
+      throw new ConvexError("Invalid stop order.");
+    }
+
+    const reordered = args.orderIndices.map((idx) => days[idx]);
+    await ctx.db.patch("trips", args.id, { days: reordered });
+    await syncItineraries(ctx, args.id, existing.startDate, reordered);
+
+    const updated = await ctx.db.get("trips", args.id);
+    if (!updated) throw new ConvexError("Trip not found.");
+    return formatTrip(updated);
+  },
+});

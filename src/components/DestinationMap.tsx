@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   MapContainer,
   TileLayer,
@@ -43,6 +43,7 @@ export default function DestinationMap({
   longitude,
   name,
 }: DestinationMapProps) {
+  const [layer, setLayer] = useState<"street" | "satellite">("street");
   const isMounted = useSyncExternalStore(
     () => () => {},
     () => true,
@@ -58,24 +59,52 @@ export default function DestinationMap({
   }
 
   return (
-    <div className="h-[400px] w-full overflow-hidden rounded-2xl border border-[#cde0d6] shadow-[0_12px_32px_-18px_rgba(3,29,56,0.35)]">
-      <MapContainer
-        center={[latitude, longitude]}
-        zoom={12}
-        scrollWheelZoom={false}
-        className="h-full w-full"
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        />
+    <div className="overflow-hidden rounded-2xl border border-[#cde0d6] shadow-[0_12px_32px_-18px_rgba(3,29,56,0.35)]">
+      <div className="flex items-center justify-between bg-[#031d38] px-4 py-2.5 text-white">
+        <span className="text-xs font-semibold">{name} Location Map</span>
+        <div className="flex gap-1 rounded-full bg-[#0e2e4d] p-1">
+          {(["street", "satellite"] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => setLayer(k)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold capitalize transition ${
+                layer === k
+                  ? "bg-[#1bc75c] text-[#031d38]"
+                  : "text-slate-200 hover:text-white"
+              }`}
+            >
+              {k}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="h-[400px] w-full">
+        <MapContainer
+          center={[latitude, longitude]}
+          zoom={12}
+          scrollWheelZoom={false}
+          className="h-full w-full"
+        >
+          {layer === "street" ? (
+            <TileLayer
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+          ) : (
+            <TileLayer
+              attribution="Tiles &copy; Esri"
+              url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            />
+          )}
 
-        <Marker position={[latitude, longitude]} icon={markerIcon}>
-          <Popup>{name}</Popup>
-        </Marker>
+          <Marker position={[latitude, longitude]} icon={markerIcon}>
+            <Popup>{name}</Popup>
+          </Marker>
 
-        <MapResizeHandler />
-      </MapContainer>
+          <MapResizeHandler />
+        </MapContainer>
+      </div>
     </div>
   );
 }
